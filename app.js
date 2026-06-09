@@ -4,6 +4,8 @@ import session from "express-session";
 import passport from "./shared/config/passport.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import userRoutes from "./modules/users/users.routes.js";
+import lensRoutes from "./modules/lenses/lenses.routes.js";
+
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
@@ -22,5 +24,5 @@ app.use(
 
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
-
+app.use("/lenses", lensRoutes);
 export default app;
