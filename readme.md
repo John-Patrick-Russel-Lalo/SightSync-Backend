@@ -1,57 +1,123 @@
-# Modular Monolith Project
+# SightSync Backend
 
-A robust Node.js application designed with a Modular Monolithic architecture. This project aims to balance the simplicity of a single deployment unit with the maintainability and separation of concerns typically found in microservices.
-
-## Architecture
-
-This project follows the **Modular Monolith** pattern:
-- **Encapsulation**: Each module contains its own business logic, data access, and API contracts.
-- **Inter-module Communication**: Modules communicate via internal interfaces or event buses rather than network calls.
-- **Scalability**: Designed to be easily split into microservices if the need arises in the future.
-
-## Features
-
-- **Pattern Matching**: Advanced glob and brace expansion support for flexible configuration and file discovery.
-- **Path Normalization**: Cross-platform path handling to ensure consistency across Windows and POSIX systems.
-- **Coverage Reporting**: Integrated V8-based code coverage for high-quality testing.
-- **Modular Design**: Domain-driven boundaries within a single codebase.
+A modular monolith REST API backend built with Express.js, PostgreSQL, and Passport.js authentication.
 
 ## Tech Stack
 
-- **Runtime**: [Node.js](https://nodejs.org/)
-- **Path Utilities**: `normalize-path`, `is-glob`, `is-number`
-- **Pattern Matching**: `braces`, `fill-range`, `to-regex-range`
-- **Testing & Coverage**: `@bcoe/v8-coverage`
+- **Runtime:** Node.js (ES Modules)
+- **Framework:** Express.js 5
+- **Database:** PostgreSQL (Neon)
+- **Authentication:** JWT + Passport.js (GitHub, Google, Facebook OAuth)
+- **Testing:** Jest
+
+## Project Structure
+
+```
+backend sightsync/
+├── server.js                  # Entry point
+├── app.js                     # Express app setup & route mounting
+├── shared/
+│   ├── config/
+│   │   ├── db.js              # PostgreSQL connection pool
+│   │   └── passport.js        # Passport OAuth strategies
+│   └── middleware/
+│       ├── authMiddleware.js   # JWT auth guard
+│       └── roleMiddleware.js   # Role-based access control
+├── modules/
+│   ├── auth/                  # Registration, login, OAuth flows
+│   ├── users/                 # User CRUD (admin only)
+│   ├── lenses/                # Lens catalog
+│   └── patient_management/    # Patient profile management
+└── .env                       # Environment variables
+```
 
 ## Prerequisites
 
-- Node.js (Latest LTS recommended)
-- npm or yarn
+- Node.js 18+
+- PostgreSQL database (Neon or Supabase)
 
-## Installation
+## Setup
 
-```bash
-cd "SightSync-Backend"
-npm install
-```
+1. Clone the repository:
+   ```bash
+   git clone <repo-url>
+   cd backend sightsync
+   ```
 
-## Running the Application
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-To start the main application entry point:
+3. Create a `.env` file in the project root:
+   ```env
+   PORT=3500
+   DATABASE_URL_NEON=postgresql://<user>:<password>@<host>/<database>?sslmode=require
+   JWT_SECRET=<your-jwt-secret>
+   SESSION_SECRET=<your-session-secret>
+   FRONTEND_URL=http://localhost:5173
+   GITHUB_CLIENT_ID=<your-github-client-id>
+   GITHUB_CLIENT_SECRET=<your-github-client-secret>
+   GOOGLE_CLIENT_ID=<your-google-client-id>
+   GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+   FACEBOOK_CLIENT_ID=<your-facebook-client-id>
+   FACEBOOK_CLIENT_SECRET=<your-facebook-client-secret>
+   ```
 
-```bash
-npm start
-```
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-## Testing
+5. Run tests:
+   ```bash
+   npm test
+   ```
 
-Run the test suite with coverage reporting:
+The server starts on `http://localhost:3500` by default.
 
-```bash
-npm test
-```
+## API Endpoints
 
-## License
+### Auth (`/auth`)
 
-This project is licensed under the MIT License.
+| Method | Endpoint              | Description                  | Auth Required |
+|--------|-----------------------|------------------------------|---------------|
+| POST   | `/auth/register`      | Register a new user          | No            |
+| POST   | `/auth/login`         | Login with email/password    | No            |
+| GET    | `/auth/logout`        | Clear auth cookie            | No            |
+| GET    | `/auth/me`            | Get current authenticated user | Yes         |
+| GET    | `/auth/github`        | Initiate GitHub OAuth        | No            |
+| GET    | `/auth/github/callback` | GitHub OAuth callback      | No            |
+| GET    | `/auth/google`        | Initiate Google OAuth        | No            |
+| GET    | `/auth/google/callback` | Google OAuth callback      | No            |
+| GET    | `/auth/facebook`      | Initiate Facebook OAuth      | No            |
+| GET    | `/auth/facebook/callback` | Facebook OAuth callback   | No            |
 
+### Users (`/users`) — Admin Only
+
+| Method | Endpoint       | Description       |
+|--------|----------------|-------------------|
+| GET    | `/users/:id`   | Get user by ID    |
+| PATCH  | `/users/:id`   | Update user       |
+| DELETE | `/users/:id`   | Delete user       |
+
+### Lenses (`/lenses`)
+
+| Method | Endpoint           | Description       |
+|--------|--------------------|-------------------|
+| GET    | `/lenses/allLenses`| Get all lenses    |
+
+### Patients (`/patients`)
+
+| Method | Endpoint      | Description           | Auth Required |
+|--------|---------------|-----------------------|---------------|
+| GET    | `/patients/`  | Get own profile       | Yes           |
+| PATCH  | `/patients/`  | Update own profile    | Yes           |
+
+## CORS
+
+Allowed origins are configured in `app.js`:
+- `http://127.0.0.1:5500`
+- `http://localhost:5500`
+- `http://localhost:5173`
+- `http://localhost:5174`
