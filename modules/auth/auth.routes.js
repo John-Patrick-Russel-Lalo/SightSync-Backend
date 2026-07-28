@@ -5,6 +5,8 @@ import { requireAuth } from "../../shared/middleware/authMiddleware.js";
 import { requireRole } from "../../shared/middleware/roleMiddleware.js";
 import { register, login } from "./auth.controller.js";
 
+const FRONTEND_URL = process.env.FRONTEND_URL;
+
 import jwt from "jsonwebtoken";
 
 const router = express.Router();
@@ -19,7 +21,7 @@ router.get(
 router.get(
   "/github/callback",
   passport.authenticate("github", {
-    failureRedirect: "http://localhost:5500/index.html",
+    failureRedirect: `${FRONTEND_URL}/index.html`,
     session: false
   }),
   (req, res) => {
@@ -47,7 +49,7 @@ router.get(
     console.log("Generated token:", token);
 
 
-    res.redirect("http://localhost:5500");
+    res.redirect(`${FRONTEND_URL}`);
   }
 );
 
@@ -59,7 +61,7 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: "http://localhost:5500/index.html",
+    failureRedirect: `${FRONTEND_URL}/index.html`,
     session: false
   }),
   (req, res) => {
@@ -86,7 +88,7 @@ router.get(
 
     console.log("Generated token:", token);
 
-    res.redirect("http://localhost:5500");
+    res.redirect(`${FRONTEND_URL}`);
   }
 );
 
@@ -100,7 +102,7 @@ router.get(
 router.get(
   "/facebook/callback",
   passport.authenticate("facebook", {
-    failureRedirect: "http://localhost:5500/index.html",
+    failureRedirect: `${FRONTEND_URL}/index.html`,
     session: false
   }),
   (req, res) => {
@@ -133,7 +135,7 @@ router.get(
     }
     console.log("Generated token:", token);
 
-    res.redirect("http://localhost:5500");
+    res.redirect(`${FRONTEND_URL}`);
   }
 );
 
