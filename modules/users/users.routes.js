@@ -1,9 +1,13 @@
 import express from "express";
 import { requireAuth } from "../../shared/middleware/authMiddleware.js";
 import { requireRole } from "../../shared/middleware/roleMiddleware.js";
-import { deleteUser, updateUser } from "./users.controller.js";
+import { getUserByIdController, deleteUser, updateUser } from "./users.controller.js";
 
 const router = express.Router();
+
+router.get("/:id", requireAuth, getUserByIdController, (req, res, next) => {
+    requireRole("admin", req.user.id)(req, res, next);
+});
 
 router.patch("/:id", requireAuth, updateUser, (req, res, next) => {
     requireRole("admin", req.user.id)(req, res, next);

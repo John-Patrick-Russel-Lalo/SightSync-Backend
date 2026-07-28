@@ -9,7 +9,6 @@ import {
   createUserByProvider,
 } from "../../modules/auth/auth.model.js";
 
-import { findUserById } from "../../modules/users/users.model.js";
 
 passport.use(
   new GitHubStrategy(

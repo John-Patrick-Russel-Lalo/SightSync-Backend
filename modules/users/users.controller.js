@@ -1,8 +1,23 @@
 
 import express from "express";
-import { deleteUserById, updateUserById } from "./users.model.js";
+import { getUserById, deleteUserById, updateUserById } from "./users.model.js";
 
 
+
+export async function getUserByIdController(req, res) {
+  try {
+    const { id } = req.params;
+
+    const user = await getUserById(id);
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Internal server error"
+    });
+  }
+}
 
 export async function deleteUser(req, res) {
   try {

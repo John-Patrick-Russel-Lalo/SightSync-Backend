@@ -18,43 +18,82 @@ export async function findUserByProvider(provider, providerId) {
 }
 
 export async function createUserByProvider(user) {
-    const result = await pool.query(
-        `
-        INSERT INTO users
-        (
-            provider,
-            provider_id,
-            email,
-            username,
-            display_name,
-            role,
-            avatar_url
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-        `,
-        [
-            user.provider,
-            user.providerId,
-            user.email,
-            user.username,
-            user.displayName,
-            user.role,
-            user.avatar
-        ]
-    );
+    const client = await pool.connect(); // Grab a dedicated client for the transaction
+    
+    try {
+        await client.query("BEGIN"); // Start transaction
 
-    return result.rows[0];
+        // 1. Create the user
+        const userResult = await client.query(
+            `
+            INSERT INTO users (provider, provider_id, email, username, display_name, role, avatar_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+            `,
+            [
+                user.provider,
+                user.providerId,
+                user.email,
+                user.username,
+                user.displayName,
+                "patient",
+                user.avatar
+            ]
+        );
+        const newUser = userResult.rows[0];
+
+        // 2. Automatically create empty patient profile if role is 'patient'
+        if (newUser.role === 'patient') {
+            await client.query(
+                `INSERT INTO patient_profiles (user_id) VALUES ($1)`,
+                [newUser.id]
+            );
+        }
+
+        await client.query("COMMIT"); // Save both queries to the database
+        return newUser;
+        
+    } catch (error) {
+        await client.query("ROLLBACK"); // Undo everything if there's an error
+        throw error;
+    } finally {
+        client.release(); // Return client to the pool
+    }
 }
 
 export async function createUser(email, username, password) {
+    const client = await pool.connect(); 
+    
+    try {
+        await client.query("BEGIN");
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-        `INSERT INTO users (provider, email, username, password, role) values ($1, $2, $3, $4, $5) RETURNING *`,
-        ["local", email, username, hashedPassword, "user"]
-    );
-    return result.rows[0];
+        // 1. Create the user
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const userResult = await client.query(
+            `
+            INSERT INTO users (provider, email, username, password, role) 
+            VALUES ($1, $2, $3, $4, $5) 
+            RETURNING *
+            `,
+            ["local", email, username, hashedPassword, "patient"]
+        );
+        const newUser = userResult.rows[0];
+
+        // 2. Automatically create the empty patient profile shell
+        await client.query(
+            `INSERT INTO patient_profiles (user_id) VALUES ($1)`,
+            [newUser.id]
+        );
+
+        await client.query("COMMIT"); 
+        return newUser;
+        
+    } catch (error) {
+        await client.query("ROLLBACK"); 
+        throw error;
+    } finally {
+        client.release(); 
+    }
 }
 
 export async function loginUser(email, password) {

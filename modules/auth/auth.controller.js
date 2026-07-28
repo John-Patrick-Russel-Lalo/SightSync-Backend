@@ -1,10 +1,13 @@
 import { createUser, loginUser } from "./auth.model.js";
+import { uniqueEmailValidator } from "./auth.service.js";
 import jwt from "jsonwebtoken";
 export async function register(req, res) {
   try {
     const { email, firstName, lastName, password } = req.body;
 
     const username = `${firstName} ${lastName}`;
+
+    await uniqueEmailValidator(req, res);
 
     const user = await createUser(email, username, password);
 

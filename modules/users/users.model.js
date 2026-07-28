@@ -4,7 +4,7 @@ import pool from "../../shared/config/db.js";
 import validator from "validator";
 import bcrypt from "bcrypt";
 
-export async function findUserById(id) {
+export async function getUserById(id) {
     const result = await pool.query(
         `
         SELECT *
