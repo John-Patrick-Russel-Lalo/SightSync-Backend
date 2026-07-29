@@ -1,6 +1,7 @@
 
 import { getRoleById } from "../../modules/users/users.model.js";
 export function requireRole(role, userId) {
+  console.log(userId)
   const getRole = getRoleById(userId);
   
   return (req, res, next) => {

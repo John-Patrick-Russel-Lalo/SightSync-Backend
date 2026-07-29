@@ -1,4 +1,5 @@
 import * as PatientModel from "./patient.model.js";
+import { phoneNumberValidator } from "./patient.service.js";
 
 // GET /api/patient/me
 export async function getMyProfile(req, res) {
@@ -25,10 +26,36 @@ export async function getMyProfile(req, res) {
     }
 }
 
-// PUT /api/patient/me
-export async function updateMyProfile(req, res) {
+export async function updateMyPatientProfile(req, res, next) {
     try {
         const userId = req.user.id;
+
+        const isAdmin = req.user.role === "admin";
+
+        phoneNumberValidator(req, res);
+
+        const updatedProfile = await PatientModel.updatePatientProfileByUser(
+            userId,
+            req.body,
+            isAdmin
+        );
+
+        return res.status(200).json({
+            message: "Patient profile updated successfully.",
+            data: updatedProfile
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// PUT /api/patient/me
+export async function updateProfile(req, res) {
+    try {
+        const userId = req.body.id;
+
+        phoneNumberValidator(req, res);
+
         
         const updatedProfile = await PatientModel.updatePatientProfile(userId, req.body);
 
