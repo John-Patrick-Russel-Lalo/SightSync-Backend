@@ -6,6 +6,7 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import userRoutes from "./modules/users/users.routes.js";
 import lensRoutes from "./modules/lenses/lenses.routes.js";
 import patientRoutes from "./modules/patient_management/patient.routes.js";
+import aiRoutes from "./modules/ai/ai.routes.js";
 
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -34,4 +35,5 @@ app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 app.use("/lenses", lensRoutes);
 app.use("/patients", patientRoutes);
+app.use("/ai", aiRoutes);
 export default app;
