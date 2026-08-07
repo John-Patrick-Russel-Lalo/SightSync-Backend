@@ -1,3 +1,4 @@
+
 import pool from "../../shared/config/db.js";
 
 // Helper Functions
@@ -48,7 +49,7 @@ export async function getAvailableSlots(doctorId, selectedDate) {
             shifts.push(override);
         }
     } else {
-        // Fall back to regular weekly recurring shifts (supports multiple shifts per day)
+        // Fall back to regular weekly recurring shifts
         const scheduleRes = await pool.query(
             `
             SELECT 
@@ -66,7 +67,7 @@ export async function getAvailableSlots(doctorId, selectedDate) {
 
     if (shifts.length === 0) return [];
 
-    // 3. Fetch Booked Appointments (Index-friendly range query + PG formatted time)
+    // 3. Fetch Booked Appointments
     const bookedRes = await pool.query(
         `
         SELECT 
@@ -98,7 +99,6 @@ export async function getAvailableSlots(doctorId, selectedDate) {
         while (currentSlotStart + slotDuration <= shiftEndMin) {
             const currentSlotEnd = currentSlotStart + slotDuration;
 
-            // Check overlap: (StartA < EndB) AND (EndA > StartB)
             const isBooked = bookedSlots.some(
                 (b) => currentSlotStart < b.end && currentSlotEnd > b.start
             );
@@ -114,21 +114,107 @@ export async function getAvailableSlots(doctorId, selectedDate) {
     return availableSlots;
 }
 
-
-export async function createAppointment({ doctorId, patientId, startTime, endTime, notes }) {
+export async function createAppointment({ doctorId, patientId, date, slot, notes }) {
     const client = await pool.connect();
 
     try {
-        // Begin Transaction
         await client.query("BEGIN");
 
-        // 1. Lock the doctor profile row to serialize concurrent booking attempts for this doctor
-        await client.query(
-            `SELECT id FROM doctor_profiles WHERE user_id = $1 FOR UPDATE`,
+        // 1. Lock & fetch Doctor Profile
+        const doctorRes = await client.query(
+            `SELECT slot_duration_minutes FROM doctor_profiles WHERE user_id = $1 FOR UPDATE`,
             [doctorId]
         );
 
-        // 2. Check for overlapping active appointments
+        if (doctorRes.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 400,
+                message: `Doctor profile for user_id ${doctorId} does not exist.`
+            };
+        }
+
+        const slotDuration = doctorRes.rows[0].slot_duration_minutes || 30;
+
+        // 2. Fetch Working Shifts for the Requested Date (Overrides prioritized over regular schedule)
+        const overrideRes = await client.query(
+            `
+            SELECT 
+                TO_CHAR(start_time, 'HH24:MI') AS start_time,
+                TO_CHAR(end_time, 'HH24:MI') AS end_time,
+                is_unavailable
+            FROM doctor_schedule_overrides
+            WHERE doctor_id = $1 AND override_date = $2::date
+            `,
+            [doctorId, date]
+        );
+
+        let shifts = [];
+
+        if (overrideRes.rows.length > 0) {
+            const override = overrideRes.rows[0];
+            if (override.is_unavailable) {
+                await client.query("ROLLBACK");
+                return {
+                    success: false,
+                    statusCode: 400,
+                    message: "Doctor is unavailable on this date."
+                };
+            }
+            if (override.start_time && override.end_time) {
+                shifts.push(override);
+            }
+        } else {
+            const scheduleRes = await client.query(
+                `
+                SELECT 
+                    TO_CHAR(start_time, 'HH24:MI') AS start_time,
+                    TO_CHAR(end_time, 'HH24:MI') AS end_time
+                FROM doctor_schedules
+                WHERE doctor_id = $1 
+                  AND day_of_week = EXTRACT(DOW FROM $2::date)
+                  AND is_active = TRUE
+                `,
+                [doctorId, date]
+            );
+            shifts = scheduleRes.rows;
+        }
+
+        if (shifts.length === 0) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 400,
+                message: "Doctor has no working schedule on this date."
+            };
+        }
+
+        // 3. Verify requested slot falls ENTIRELY within an active shift
+        const reqStartMin = timeToMinutes(slot);
+        const reqEndMin = reqStartMin + slotDuration;
+
+        const fitsInShift = shifts.some((shift) => {
+            const shiftStartMin = timeToMinutes(shift.start_time);
+            const shiftEndMin = timeToMinutes(shift.end_time);
+            return reqStartMin >= shiftStartMin && reqEndMin <= shiftEndMin;
+        });
+
+        if (!fitsInShift) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 400,
+                message: "The requested time slot falls outside the doctor's working hours."
+            };
+        }
+
+        // 4. Calculate SQL formatted timestamps
+        const slotEnd = minutesToTime(reqEndMin);
+        const startTime = `${date} ${slot}:00`;
+        const endTime = `${date} ${slotEnd}:00`;
+
+        // 5. Check for overlapping appointments
         const conflictCheck = await client.query(
             `
             SELECT id 
@@ -150,7 +236,7 @@ export async function createAppointment({ doctorId, patientId, startTime, endTim
             };
         }
 
-        // 3. Create the appointment
+        // 6. Create the appointment
         const insertRes = await client.query(
             `
             INSERT INTO appointments (
@@ -161,13 +247,15 @@ export async function createAppointment({ doctorId, patientId, startTime, endTim
                 notes, 
                 status
             )
-            VALUES ($1, $2, $3, $4, $5, 'scheduled')
-            RETURNING id, doctor_id, patient_id, start_time, end_time, status, notes, created_at
+            VALUES ($1, $2, $3::timestamp, $4::timestamp, $5, 'scheduled')
+            RETURNING id, doctor_id, patient_id, 
+                      TO_CHAR(start_time, 'YYYY-MM-DD HH24:MI:SS') AS start_time,
+                      TO_CHAR(end_time, 'YYYY-MM-DD HH24:MI:SS') AS end_time,
+                      status, notes, created_at
             `,
             [doctorId, patientId, startTime, endTime, notes || null]
         );
 
-        // Commit Transaction
         await client.query("COMMIT");
 
         return {

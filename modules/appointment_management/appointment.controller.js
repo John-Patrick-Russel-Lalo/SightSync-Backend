@@ -20,29 +20,19 @@ export async function handleGetAvailableSlots(req, res) {
 
 export async function handleCreateAppointment(req, res) {
     try {
-        const { doctorId, patientId, date, slot, durationMinutes = 30, notes } = req.body;
+        const { doctorId, patientId, date, slot, notes } = req.body;
 
-        // Basic Validation
         if (!doctorId || !patientId || !date || !slot) {
             return res.status(400).json({
                 error: "doctorId, patientId, date (YYYY-MM-DD), and slot (HH:MM) are required."
             });
         }
 
-        // Construct start_time and end_time ISO timestamps
-        const startTimeStr = `${date} ${slot}:00`;
-        const start = new Date(startTimeStr);
-        const end = new Date(start.getTime() + durationMinutes * 60000);
-
-        // Format back to DB timestamp format
-        const startTime = start.toISOString().replace("T", " ").substring(0, 19);
-        const endTime = end.toISOString().replace("T", " ").substring(0, 19);
-
         const result = await createAppointment({
             doctorId,
             patientId,
-            startTime,
-            endTime,
+            date,
+            slot,
             notes
         });
 
@@ -55,6 +45,11 @@ export async function handleCreateAppointment(req, res) {
             appointment: result.data
         });
     } catch (error) {
+        if (error.code === '23503') {
+            return res.status(400).json({ 
+                error: "Invalid doctorId or patientId. The specified user does not exist." 
+            });
+        }
         console.error("Error creating appointment:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
