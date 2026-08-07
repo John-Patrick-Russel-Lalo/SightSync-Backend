@@ -1,8 +1,10 @@
-import express from "express";
-import { getAvailableSlotsController } from "./appointment.controller.js";
+import { Router } from "express";
+import { handleGetAvailableSlots, handleCreateAppointment } from "./appointment.controller.js";
 
-const router = express.Router();
+const router = Router();
 
-router.get("/:doctorId/:selectedDate", getAvailableSlotsController);
+router.get("/:doctorId/:date", handleGetAvailableSlots);
+
+router.post("/", handleCreateAppointment);
 
 export default router;
