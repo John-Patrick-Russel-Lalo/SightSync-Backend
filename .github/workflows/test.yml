@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x] # Tests against multiple Node versions
+        node-version: [20, 22] # Tests against multiple Node versions
 
     steps:
       # 1. Checkout repository code
