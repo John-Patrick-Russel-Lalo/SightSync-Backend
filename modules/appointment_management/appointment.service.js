@@ -44,7 +44,7 @@ export async function getAvailableSlots(doctorId, selectedDate) {
 
     if (overrideRes.rows.length > 0) {
         const override = overrideRes.rows[0];
-        if (override.is_unavailable) return []; // Entire day is explicitly blocked
+        if (override.is_unavailable) return [];
         if (override.start_time && override.end_time) {
             shifts.push(override);
         }
