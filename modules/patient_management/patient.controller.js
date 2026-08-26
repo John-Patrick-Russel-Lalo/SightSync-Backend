@@ -31,6 +31,7 @@ export async function updateMyPatientProfile(req, res, next) {
         const userId = req.user.id;
 
         const isAdmin = req.user.role === "admin";
+        console.log(isAdmin)
 
         phoneNumberValidator(req, res);
 
