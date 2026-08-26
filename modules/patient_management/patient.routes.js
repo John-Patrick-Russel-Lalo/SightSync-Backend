@@ -1,6 +1,7 @@
 import express from "express";
 import { requireAuth } from "../../shared/middleware/authMiddleware.js";
 import { requireRole } from "../../shared/middleware/roleMiddleware.js";
+import { updateMyPatientProfileValidator } from "./patient.service.js";
 import {
   getMyProfile,
   updateProfile,
@@ -17,6 +18,7 @@ router.patch("/", requireAuth, updateProfile, (req, res, next) => {
 router.put(
     "/profile",
     requireAuth,
+    updateMyPatientProfileValidator,
     updateMyPatientProfile,
     (req, res, next) => {
         requireRole("patient", req.user.id)(req, res, next);

@@ -29,3 +29,26 @@ export const phoneNumberValidator = async (req, res) => {
     });
   }
 }
+
+
+export const updateMyPatientProfileValidator = async (req, res, next) => {
+    try {
+
+        const { dateOfBirth, gender, phoneNumber, bloodType, emergencyContactName, emergencyContactPhone, insuranceProvider, insurancePolicyNumber } = req.body;
+
+        if (!dateOfBirth || !gender || !phoneNumber || !bloodType || !emergencyContactName || !emergencyContactPhone || !insuranceProvider || !insurancePolicyNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required",
+            });
+        } else {
+            next();
+        }
+        
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+}
