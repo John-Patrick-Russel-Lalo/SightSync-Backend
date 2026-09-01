@@ -23,6 +23,7 @@ export async function login(req, res) {
     const { email, password } = req.body;
 
     const user = await loginUser(email, password);
+    console.log(password)
 
     if (!user) {
       return res.status(401).json({

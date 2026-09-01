@@ -11,18 +11,15 @@ import {
 const router = express.Router();
 
 router.get("/", requireAuth, getMyProfile);
-router.patch("/", requireAuth, updateProfile, (req, res, next) => {
-  requireRole("admin", req.user.id)(req, res, next);
-});
+
+router.patch("/", requireAuth, requireRole("admin"), updateProfile);
 
 router.put(
-    "/profile",
-    requireAuth,
-    updateMyPatientProfileValidator,
-    updateMyPatientProfile,
-    (req, res, next) => {
-        requireRole("patient", req.user.id)(req, res, next);
-    }
+  "/profile",
+  requireAuth,
+  requireRole("patient"),
+  updateMyPatientProfileValidator,
+  updateMyPatientProfile,
 );
 
 export default router;

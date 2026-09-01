@@ -1,20 +1,16 @@
 import express from "express";
 import { requireAuth } from "../../shared/middleware/authMiddleware.js";
 import { requireRole } from "../../shared/middleware/roleMiddleware.js";
-import { getUserByIdController, deleteUser, updateUser } from "./users.controller.js";
+import { getAllUserController, getUserByIdController, deleteUser, updateUser } from "./users.controller.js";
 
 const router = express.Router();
 
-router.get("/:id", requireAuth, getUserByIdController, (req, res, next) => {
-    requireRole("admin", req.user.id)(req, res, next);
-});
+router.get("/", requireAuth, requireRole("admin"), getAllUserController);
 
-router.patch("/:id", requireAuth, updateUser, (req, res, next) => {
-    requireRole("admin", req.user.id)(req, res, next);
-});
+router.get("/:id", requireAuth, requireRole("admin"), getUserByIdController);
 
-router.delete("/:id", requireAuth, deleteUser, (req, res, next) => {
-    requireRole("admin", req.user.id)(req, res, next);
-});
+router.patch("/:id", requireAuth, requireRole("admin"), updateUser);
+
+router.delete("/:id", requireAuth, requireRole("admin"), deleteUser);
 
 export default router;
