@@ -4,6 +4,16 @@ import pool from "../../shared/config/db.js";
 import validator from "validator";
 import bcrypt from "bcrypt";
 
+export async function getAllUser(){
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM users
+        `
+    );
+    return result.rows;
+}
+
 export async function getUserById(id) {
     const result = await pool.query(
         `
