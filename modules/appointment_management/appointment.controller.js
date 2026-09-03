@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments } from "./appointment.service.js";
 
 export async function handleGetAvailableSlots(req, res) {
     try {
@@ -14,6 +14,16 @@ export async function handleGetAvailableSlots(req, res) {
         return res.json({ doctorId, date, availableSlots: slots });
     } catch (error) {
         console.error("Error fetching available slots:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleGetAllAppointments(req, res) {
+    try {
+        const appointments = await getAllAppointments();
+        return res.json({ appointments });
+    } catch (error) {
+        console.error("Error fetching all appointments:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }

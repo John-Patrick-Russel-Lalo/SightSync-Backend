@@ -8,6 +8,7 @@ import lensRoutes from "./modules/lenses/lenses.routes.js";
 import patientRoutes from "./modules/patient_management/patient.routes.js";
 import aiRoutes from "./modules/ai/ai.routes.js";
 import appointmentRoutes from "./modules/appointment_management/appointment.routes.js";
+import doctorRoutes from "./modules/doctor_management/doctor.routes.js";
 
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -38,4 +39,5 @@ app.use("/lenses", lensRoutes);
 app.use("/patients", patientRoutes);
 app.use("/ai", aiRoutes);
 app.use("/appointments", appointmentRoutes);
+app.use("/doctors", doctorRoutes);
 export default app;
