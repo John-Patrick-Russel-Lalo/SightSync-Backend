@@ -114,6 +114,13 @@ export async function getAvailableSlots(doctorId, selectedDate) {
     return availableSlots;
 }
 
+export async function getAllAppointments() {
+    const result = await pool.query(
+        `SELECT * FROM appointments`
+    );
+    return result.rows;
+}
+
 export async function createAppointment({ doctorId, patientId, date, slot, notes }) {
     const client = await pool.connect();
 
