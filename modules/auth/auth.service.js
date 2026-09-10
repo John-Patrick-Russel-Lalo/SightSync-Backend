@@ -12,4 +12,23 @@ export async function uniqueEmailValidator(req, res) {
   }
 }
 
+
+// Check existing user by email
+export async function findUserByEmail(email) {
+  const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+  return result.rows[0] || null;
+}
+
+// Link an existing account to an OAuth provider ID
+export async function linkProviderToUser(userId, provider, providerId) {
+  // Example SQL assumption (e.g. google_id, github_id, facebook_id columns)
+  const providerColumn = `${provider}_id`; 
+  
+  const result = await pool.query(
+    `UPDATE users SET ${providerColumn} = $1 WHERE id = $2 RETURNING *`,
+    [providerId, userId]
+  );
+  return result.rows[0];
+}
+
 export default { uniqueEmailValidator };
