@@ -4,6 +4,7 @@ export const phoneNumberValidator = async (req, res) => {
   try {
     
     const { phoneNumber } = req.body;
+    console.log(phoneNumber)
 
     if (!phoneNumber || phoneNumber.length < 7 || phoneNumber.length > 15) {
       return res.status(400).json({

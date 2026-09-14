@@ -21,6 +21,7 @@
     "express-session": "^1.19.0",
     "gitignore": "^0.7.0",
     "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
     "nodemon": "^3.1.14",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",

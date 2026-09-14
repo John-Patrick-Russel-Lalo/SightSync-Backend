@@ -121,6 +121,14 @@ export async function getAllAppointments() {
     return result.rows;
 }
 
+export async function getAppointmentByDoctorId(doctorId) {
+    const result = await pool.query(
+        `SELECT * FROM appointments WHERE doctor_id = $1`,
+        [doctorId]
+    );
+    return result.rows;
+}
+
 export async function createAppointment({ doctorId, patientId, date, slot, notes }) {
     const client = await pool.connect();
 
