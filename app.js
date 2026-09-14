@@ -10,6 +10,9 @@ import aiRoutes from "./modules/ai/ai.routes.js";
 import appointmentRoutes from "./modules/appointment_management/appointment.routes.js";
 import doctorRoutes from "./modules/doctor_management/doctor.routes.js";
 
+import { startAppointmentCron } from "./shared/services/appointmentCron.js";
+startAppointmentCron();
+
 import cookieParser from "cookie-parser";
 import cors from "cors";
 

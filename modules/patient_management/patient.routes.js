@@ -5,7 +5,9 @@ import { updateMyPatientProfileValidator } from "./patient.service.js";
 import {
   getMyProfile,
   updateProfile,
-  updateMyPatientProfile
+  updateMyPatientProfile,
+  getPatientProfileByPatientId,
+  updatePatientStatusController
 } from "./patient.controller.js";
 
 const router = express.Router();
@@ -21,5 +23,14 @@ router.put(
   updateMyPatientProfileValidator,
   updateMyPatientProfile,
 );
+
+router.get(
+  "/:patientId",
+  requireAuth,
+  requireRole("admin", "doctor"),
+  getPatientProfileByPatientId
+);
+
+router.patch("/status", requireAuth, requireRole("admin"), updatePatientStatusController);
 
 export default router;

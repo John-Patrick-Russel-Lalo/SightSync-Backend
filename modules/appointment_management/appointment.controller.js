@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId } from "./appointment.service.js";
 
 export async function handleGetAvailableSlots(req, res) {
     try {
@@ -24,6 +24,24 @@ export async function handleGetAllAppointments(req, res) {
         return res.json({ appointments });
     } catch (error) {
         console.error("Error fetching all appointments:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleGetAppointmentByDoctorId(req, res) {
+    try {
+        const { doctorId } = req.params;
+
+        if (!doctorId) {
+            return res.status(400).json({
+                error: "doctorId path parameter is required."
+            });
+        }
+
+        const appointments = await getAppointmentByDoctorId(doctorId);
+        return res.json({ doctorId, appointments });
+    } catch (error) {
+        console.error("Error fetching appointments by doctor:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }
@@ -58,6 +76,44 @@ export async function handleCreateAppointment(req, res) {
         if (error.code === '23503') {
             return res.status(400).json({ 
                 error: "Invalid doctorId or patientId. The specified user does not exist." 
+            });
+        }
+        console.error("Error creating appointment:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleCreateAppointmentByPatient(req, res) {
+    try {
+        const { doctorId, date, slot, notes } = req.body;
+        const patientId = req.user.id;
+
+        if (!doctorId || !patientId || !date || !slot) {
+            return res.status(400).json({
+                error: "doctorId, patientId, date (YYYY-MM-DD), and slot (HH:MM) are required."
+            });
+        }
+
+        const result = await createAppointment({
+            doctorId,
+            patientId,
+            date,
+            slot,
+            notes
+        });
+
+        if (!result.success) {
+            return res.status(result.statusCode).json({ error: result.message });
+        }
+
+        return res.status(201).json({
+            message: "Appointment successfully created.",
+            appointment: result.data
+        });
+    } catch (error) {
+        if (error.code === '23503') {
+            return res.status(400).json({
+                error: "Invalid doctorId or patientId. The specified user does not exist."
             });
         }
         console.error("Error creating appointment:", error);

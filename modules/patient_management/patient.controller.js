@@ -26,6 +26,33 @@ export async function getMyProfile(req, res) {
     }
 }
 
+export async function getPatientProfileByPatientId(req, res) {
+    try {
+        const { patientId } = req.params;
+
+        if (!patientId) {
+            return res.status(400).json({ message: "Patient ID is required." });
+        }
+
+        const profile = await PatientModel.getPatientProfileByUserId(patientId);
+
+        if (!profile) {
+            return res.status(404).json({ message: "Patient profile not found." });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: profile
+        });
+    } catch (error) {
+        return res.status(500).json({ 
+            success: false, 
+            message: "Failed to retrieve profile.", 
+            error: error.message 
+        });
+    }
+}
+
 export async function updateMyPatientProfile(req, res, next) {
     try {
         const userId = req.user.id;
@@ -73,6 +100,35 @@ export async function updateProfile(req, res) {
         return res.status(500).json({ 
             success: false, 
             message: "Failed to update profile.", 
+            error: error.message 
+        });
+    }
+}
+
+
+export async function updatePatientStatusController(req, res) {
+    try {
+        const { patientId, status } = req.body;
+
+        if (!patientId || !status) {
+            return res.status(400).json({ message: "Patient ID and status are required." });
+        }
+
+        const updatedProfile = await PatientModel.updatePatientStatus(patientId, status);
+
+        if (!updatedProfile) {
+            return res.status(404).json({ message: "Patient profile update failed. Profile not found." });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Patient status updated successfully.",
+            data: updatedProfile
+        });
+    } catch (error) {
+        return res.status(500).json({ 
+            success: false, 
+            message: "Failed to update patient status.", 
             error: error.message 
         });
     }
