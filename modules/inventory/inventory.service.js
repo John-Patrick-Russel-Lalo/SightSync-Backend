@@ -288,6 +288,7 @@ export async function getAllInventory(limit = 50, offset = 0) {
       i.reorder_level,
       i.unit_cost,
       i.selling_price,
+      i.is_active,
       i.created_at,
       i.updated_at,
       CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
@@ -310,6 +311,7 @@ export async function getAllInventory(limit = 50, offset = 0) {
     FROM inventory i
     LEFT JOIN frames f ON i.frame_id = f.id
     LEFT JOIN lenses l ON i.lens_id = l.id
+    WHERE i.is_active = TRUE
     ORDER BY i.created_at DESC
     LIMIT $1 OFFSET $2
     `,
@@ -330,6 +332,7 @@ export async function getInventoryById(id) {
       i.reorder_level,
       i.unit_cost,
       i.selling_price,
+      i.is_active,
       i.created_at,
       i.updated_at,
       CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
@@ -371,6 +374,7 @@ export async function getLowStockInventory() {
       i.reorder_level,
       i.unit_cost,
       i.selling_price,
+      i.is_active,
       i.created_at,
       i.updated_at,
       CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
@@ -391,6 +395,7 @@ export async function getLowStockInventory() {
     LEFT JOIN frames f ON i.frame_id = f.id
     LEFT JOIN lenses l ON i.lens_id = l.id
     WHERE i.quantity <= i.reorder_level
+      AND i.is_active = TRUE
     ORDER BY (i.quantity - i.reorder_level) ASC
     `
   );
@@ -503,9 +508,12 @@ export async function updateInventoryQuantity(id, quantity) {
 }
 
 export async function deleteInventoryItem(id) {
+  // Soft delete (archive): the row must persist because sale_items references it
+  // (sales history / audit trail) and voidSale needs it to restore stock.
   const result = await pool.query(
     `
-    DELETE FROM inventory
+    UPDATE inventory
+    SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
     WHERE id = $1
     RETURNING *
     `,
