@@ -5,6 +5,8 @@ import {
     createDoctorProfile,
     updateDoctorProfile,
     deleteDoctorProfileByUserId,
+    getDoctorSchedulesByUserId,
+    setDoctorSchedules,
 } from "./doctor.service.js";
 
 /**
@@ -142,4 +144,36 @@ export async function handleDeleteDoctorProfile(req, res) {
         console.error("Error deleting doctor profile:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
+}
+
+export async function getDoctorSchedulesController(req, res) {
+  try {
+    const { userId } = req.params;
+    const schedules = await getDoctorSchedulesByUserId(userId);
+    res.status(200).json({ success: true, data: schedules });
+  } catch (error) {
+    console.error("Error fetching doctor schedules:", error);
+    res.status(500).json({ error: "Failed to load doctor schedules." });
+  }
+}
+
+export async function setDoctorSchedulesController(req, res) {
+  try {
+    const { userId } = req.params;
+    const { schedules } = req.body; // Expects an array of schedule items
+
+    if (!Array.isArray(schedules)) {
+      return res.status(400).json({ error: "schedules payload must be an array." });
+    }
+
+    const updatedSchedules = await setDoctorSchedules(userId, schedules);
+    res.status(200).json({
+      success: true,
+      message: "Doctor schedule updated successfully.",
+      data: updatedSchedules,
+    });
+  } catch (error) {
+    console.error("Error updating doctor schedule:", error);
+    res.status(500).json({ error: error.message || "Failed to update schedules." });
+  }
 }

@@ -9,6 +9,7 @@ import patientRoutes from "./modules/patient_management/patient.routes.js";
 import aiRoutes from "./modules/ai/ai.routes.js";
 import appointmentRoutes from "./modules/appointment_management/appointment.routes.js";
 import doctorRoutes from "./modules/doctor_management/doctor.routes.js";
+import inventoryRoutes from "./modules/inventory/inventory.routes.js";
 
 import { startAppointmentCron } from "./shared/services/appointmentCron.js";
 startAppointmentCron();
@@ -43,4 +44,7 @@ app.use("/patients", patientRoutes);
 app.use("/ai", aiRoutes);
 app.use("/appointments", appointmentRoutes);
 app.use("/doctors", doctorRoutes);
+app.use("/inventory", inventoryRoutes);
+
+
 export default app;

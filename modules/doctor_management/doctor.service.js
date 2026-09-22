@@ -156,3 +156,62 @@ export async function deleteDoctorProfileByUserId(userId) {
 
   return result.rows[0] || null;
 }
+
+
+/**
+ * Get schedules for a specific doctor by user_id ordered by day_of_week
+ */
+export async function getDoctorSchedulesByUserId(userId) {
+  const result = await pool.query(
+    `
+    SELECT id, doctor_id, day_of_week, start_time, end_time, is_active
+    FROM doctor_schedules
+    WHERE doctor_id = $1
+    ORDER BY day_of_week ASC
+    `,
+    [userId]
+  );
+  return result.rows;
+}
+
+/**
+ * Replace all schedules for a doctor within a database transaction
+ * @param {number|string} userId 
+ * @param {Array<{dayOfWeek: number, startTime: string, endTime: string, isActive: boolean}>} schedules 
+ */
+export async function setDoctorSchedules(userId, schedules) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1. Clear existing schedules for this doctor
+    await client.query("DELETE FROM doctor_schedules WHERE doctor_id = $1", [userId]);
+
+    // 2. Insert new schedule records
+    const insertedSchedules = [];
+    for (const schedule of schedules) {
+      const { dayOfWeek, startTime, endTime, isActive = true } = schedule;
+
+      // Skip inactive entries or validate time boundaries
+      if (!isActive) continue;
+
+      const res = await client.query(
+        `
+        INSERT INTO doctor_schedules (doctor_id, day_of_week, start_time, end_time, is_active)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+        `,
+        [userId, dayOfWeek, startTime, endTime, isActive]
+      );
+      insertedSchedules.push(res.rows[0]);
+    }
+
+    await client.query("COMMIT");
+    return insertedSchedules;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
