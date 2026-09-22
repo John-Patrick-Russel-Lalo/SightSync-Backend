@@ -129,6 +129,22 @@ export async function getAppointmentByDoctorId(doctorId) {
     return result.rows;
 }
 
+export async function getAppointmentById(id) {
+    const result = await pool.query(
+        `SELECT * FROM appointments WHERE id = $1`,
+        [id]
+    );
+    return result.rows[0];
+}
+
+export async function updateAppointmentStatus(id, status) {
+    const result = await pool.query(
+        `UPDATE appointments SET status = $1 WHERE id = $2 RETURNING *`,
+        [status, id]
+    );
+    return result.rows[0];
+}
+
 export async function createAppointment({ doctorId, patientId, date, slot, notes }) {
     const client = await pool.connect();
 
@@ -262,7 +278,7 @@ export async function createAppointment({ doctorId, patientId, date, slot, notes
                 notes, 
                 status
             )
-            VALUES ($1, $2, $3::timestamp, $4::timestamp, $5, 'scheduled')
+            VALUES ($1, $2, $3::timestamp, $4::timestamp, $5, 'pending')
             RETURNING id, doctor_id, patient_id, 
                       TO_CHAR(start_time, 'YYYY-MM-DD HH24:MI:SS') AS start_time,
                       TO_CHAR(end_time, 'YYYY-MM-DD HH24:MI:SS') AS end_time,

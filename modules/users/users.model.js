@@ -71,3 +71,15 @@ export async function getRoleById(roleId) {
 
     return result.rows[0];
 }
+
+export async function getUsersByRole(role) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM users
+        WHERE role = $1
+        `,
+        [role]
+    );
+    return result.rows;
+}

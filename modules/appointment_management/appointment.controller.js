@@ -1,4 +1,6 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, updateAppointmentStatus, getAppointmentById } from "./appointment.service.js";
+import { createNotification } from "../notification/notification.model.js";
+import { getUsersByRole } from "../users/users.model.js";
 
 export async function handleGetAvailableSlots(req, res) {
     try {
@@ -68,6 +70,19 @@ export async function handleCreateAppointment(req, res) {
             return res.status(result.statusCode).json({ error: result.message });
         }
 
+        // Send Notifications
+        try {
+            await createNotification(patientId, "Appointment Requested", `Your appointment request for ${date} at ${slot} has been submitted and is pending admin approval.`);
+            await createNotification(doctorId, "New Appointment Request", `A new appointment request has been submitted by patient ID: ${patientId} for ${date} at ${slot}.`);
+            
+            const admins = await getUsersByRole('admin');
+            for (const admin of admins) {
+                await createNotification(admin.id, "Pending Appointment Approval", `New appointment request from patient ID: ${patientId} for doctor ID: ${doctorId} requires your approval.`);
+            }
+        } catch (notifErr) {
+            console.error("Failed to send notifications:", notifErr);
+        }
+
         return res.status(201).json({
             message: "Appointment successfully created.",
             appointment: result.data
@@ -106,6 +121,19 @@ export async function handleCreateAppointmentByPatient(req, res) {
             return res.status(result.statusCode).json({ error: result.message });
         }
 
+        // Send Notifications
+        try {
+            await createNotification(patientId, "Appointment Requested", `Your appointment request for ${date} at ${slot} has been submitted and is pending admin approval.`);
+            await createNotification(doctorId, "New Appointment Request", `A new appointment request has been submitted by patient ID: ${patientId} for ${date} at ${slot}.`);
+            
+            const admins = await getUsersByRole('admin');
+            for (const admin of admins) {
+                await createNotification(admin.id, "Pending Appointment Approval", `New appointment request from patient ID: ${patientId} for doctor ID: ${doctorId} requires your approval.`);
+            }
+        } catch (notifErr) {
+            console.error("Failed to send notifications:", notifErr);
+        }
+
         return res.status(201).json({
             message: "Appointment successfully created.",
             appointment: result.data
@@ -117,6 +145,42 @@ export async function handleCreateAppointmentByPatient(req, res) {
             });
         }
         console.error("Error creating appointment:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleUpdateAppointmentStatus(req, res) {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status || !['scheduled', 'declined', 'cancelled', 'completed'].includes(status)) {
+            return res.status(400).json({ error: "Invalid status provided." });
+        }
+
+        const appointment = await getAppointmentById(id);
+        if (!appointment) {
+            return res.status(404).json({ error: "Appointment not found." });
+        }
+
+        const updatedAppointment = await updateAppointmentStatus(id, status);
+
+        // Send notifications based on status
+        try {
+            if (status === 'scheduled') {
+                await createNotification(appointment.patient_id, "Appointment Approved", `Your appointment request for ${new Date(appointment.start_time).toLocaleString()} has been approved.`);
+                await createNotification(appointment.doctor_id, "Appointment Approved", `An appointment with patient ID: ${appointment.patient_id} for ${new Date(appointment.start_time).toLocaleString()} has been approved and scheduled.`);
+            } else if (status === 'declined' || status === 'cancelled') {
+                await createNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${new Date(appointment.start_time).toLocaleString()} has been declined by the administrator.`);
+                await createNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${new Date(appointment.start_time).toLocaleString()} has been declined.`);
+            }
+        } catch (notifErr) {
+            console.error("Failed to send status update notifications:", notifErr);
+        }
+
+        return res.json({ message: "Appointment status updated.", appointment: updatedAppointment });
+    } catch (error) {
+        console.error("Error updating appointment status:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }
