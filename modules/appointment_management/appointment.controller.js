@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, updateAppointmentStatus, getAppointmentById } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById } from "./appointment.service.js";
 import { createNotification } from "../notification/notification.model.js";
 import { getUsersByRole } from "../users/users.model.js";
 
@@ -44,6 +44,18 @@ export async function handleGetAppointmentByDoctorId(req, res) {
         return res.json({ doctorId, appointments });
     } catch (error) {
         console.error("Error fetching appointments by doctor:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleGetAppointmentByPatientId(req, res) {
+    try {
+        const patientId = req.user.id;
+
+        const appointments = await getAppointmentByPatientId(patientId);
+        return res.json({ patientId, appointments });
+    } catch (error) {
+        console.error("Error fetching appointments by patient:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }

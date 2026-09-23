@@ -129,6 +129,14 @@ export async function getAppointmentByDoctorId(doctorId) {
     return result.rows;
 }
 
+export async function getAppointmentByPatientId(patientId) {
+    const result = await pool.query(
+        `SELECT * FROM appointments WHERE patient_id = $1 ORDER BY start_time DESC`,
+        [patientId]
+    );
+    return result.rows;
+}
+
 export async function getAppointmentById(id) {
     const result = await pool.query(
         `SELECT * FROM appointments WHERE id = $1`,
