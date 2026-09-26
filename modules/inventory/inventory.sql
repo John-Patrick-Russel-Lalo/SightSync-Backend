@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS inventory (
     reorder_level INT NOT NULL DEFAULT 5,
     unit_cost NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     selling_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE, -- soft-delete flag: archived items are hidden but never destroyed (POS history/restock depend on the row)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migration for existing databases:
+-- ALTER TABLE inventory ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;

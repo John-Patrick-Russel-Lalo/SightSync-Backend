@@ -437,8 +437,17 @@ export async function handleDeleteInventoryItem(req, res) {
       return res.status(404).json({ error: "Inventory item not found." });
     }
 
-    res.json({ message: "Inventory item deleted successfully.", data: deleted });
+    res.json({
+      message: "Inventory item archived successfully.",
+      data: deleted,
+    });
   } catch (error) {
+    if (error.code === "23503") {
+      return res.status(409).json({
+        error:
+          "This item has sale history and cannot be permanently deleted. It was archived instead.",
+      });
+    }
     console.error("Error deleting inventory item:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
