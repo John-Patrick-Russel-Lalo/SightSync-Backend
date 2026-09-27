@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import pool from "../../shared/config/db.js";
-import { getAvailableSlots, createAppointment } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
 
 // Mock the db module
 vi.mock("../../shared/config/db.js", () => {
@@ -220,6 +220,86 @@ describe("Appointment Service", () => {
 
       expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
       expect(mockClient.release).toHaveBeenCalled();
+    });
+  });
+
+  describe("archiveAppointment", () => {
+    let mockClient;
+
+    beforeEach(() => {
+      mockClient = {
+        query: vi.fn(),
+        release: vi.fn(),
+      };
+      pool.connect.mockResolvedValue(mockClient);
+    });
+
+    it("should move appointment to archive and delete from appointments", async () => {
+      const mockArchived = {
+        id: 5,
+        doctor_id: 1,
+        patient_id: 2,
+        start_time: "2026-09-01 09:00:00",
+        end_time: "2026-09-01 09:30:00",
+        status: "declined",
+      };
+
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [mockArchived] }) // INSERT into archive
+        .mockResolvedValueOnce({}) // DELETE from appointments
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const result = await archiveAppointment(5, "declined");
+
+      expect(result).toEqual({
+        success: true,
+        statusCode: 200,
+        data: mockArchived,
+      });
+      expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it("should rollback and return 404 when appointment does not exist", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }); // INSERT returns no rows
+
+      const result = await archiveAppointment(999, "no_show");
+
+      expect(result).toEqual({
+        success: false,
+        statusCode: 404,
+        message: "Appointment not found.",
+      });
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+  });
+
+  describe("getArchivedAppointments", () => {
+    it("should return archived appointments ordered by archived_at desc", async () => {
+      pool.query.mockResolvedValueOnce({
+        rows: [{ id: 1, status: "no_show" }, { id: 2, status: "declined" }],
+      });
+
+      const archives = await getArchivedAppointments();
+      expect(archives).toEqual([
+        { id: 1, status: "no_show" },
+        { id: 2, status: "declined" },
+      ]);
+    });
+  });
+
+  describe("getArchivedAppointmentsByUser", () => {
+    it("should return archived appointments for the given user", async () => {
+      pool.query.mockResolvedValueOnce({
+        rows: [{ id: 1, patient_id: 42, status: "declined" }],
+      });
+
+      const archives = await getArchivedAppointmentsByUser(42);
+      expect(archives).toEqual([{ id: 1, patient_id: 42, status: "declined" }]);
     });
   });
 });

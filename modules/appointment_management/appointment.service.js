@@ -77,7 +77,7 @@ export async function getAvailableSlots(doctorId, selectedDate) {
         WHERE doctor_id = $1 
           AND start_time >= $2::date 
           AND start_time < ($2::date + INTERVAL '1 day')
-          AND status NOT IN ('cancelled', 'no_show')
+          AND status NOT IN ('cancelled', 'declined', 'no_show')
         `,
         [doctorId, selectedDate]
     );
@@ -151,6 +151,72 @@ export async function updateAppointmentStatus(id, status) {
         [status, id]
     );
     return result.rows[0];
+}
+
+export async function archiveAppointment(id, status) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        // Move the appointment to the archive (history) and free up its time slot
+        const archivedRes = await client.query(
+            `
+            INSERT INTO appointment_archive (
+                doctor_id, patient_id, start_time, end_time, notes, status, created_at, updated_at
+            )
+            SELECT doctor_id, patient_id, start_time, end_time, notes, $2, created_at, CURRENT_TIMESTAMP
+            FROM appointments
+            WHERE id = $1
+            RETURNING *
+            `,
+            [id, status]
+        );
+
+        if (archivedRes.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Appointment not found."
+            };
+        }
+
+        await client.query(
+            `DELETE FROM appointments WHERE id = $1`,
+            [id]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            statusCode: 200,
+            data: archivedRes.rows[0]
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+export async function getArchivedAppointments() {
+    const result = await pool.query(
+        `SELECT * FROM appointment_archive ORDER BY archived_at DESC`
+    );
+    return result.rows;
+}
+
+export async function getArchivedAppointmentsByUser(userId) {
+    const result = await pool.query(
+        `SELECT * FROM appointment_archive 
+         WHERE patient_id = $1 OR doctor_id = $1 
+         ORDER BY archived_at DESC`,
+        [userId]
+    );
+    return result.rows;
 }
 
 export async function createAppointment({ doctorId, patientId, date, slot, notes }) {
@@ -259,7 +325,7 @@ export async function createAppointment({ doctorId, patientId, date, slot, notes
             SELECT id 
             FROM appointments
             WHERE doctor_id = $1
-              AND status NOT IN ('cancelled', 'no_show')
+              AND status NOT IN ('cancelled', 'declined', 'no_show')
               AND start_time < $3::timestamp 
               AND end_time > $2::timestamp
             `,

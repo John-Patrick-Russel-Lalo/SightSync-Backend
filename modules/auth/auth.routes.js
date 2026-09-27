@@ -21,7 +21,7 @@ router.get(
 router.get(
   "/github/callback",
   passport.authenticate("github", {
-    failureRedirect: `${FRONTEND_URL}/index.html`,
+    failureRedirect: `${FRONTEND_URL}/login`,
     session: false
   }),
   (req, res) => {
@@ -49,7 +49,7 @@ router.get(
     console.log("Generated token:", token);
 
 
-    res.redirect(`${FRONTEND_URL}`);
+    res.redirect(`${FRONTEND_URL}/login`);
   }
 );
 
@@ -61,7 +61,7 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${FRONTEND_URL}/index.html`,
+    failureRedirect: `${FRONTEND_URL}/login`,
     session: false
   }),
   (req, res) => {
@@ -88,7 +88,7 @@ router.get(
 
     console.log("Generated token:", token);
 
-    res.redirect(`${FRONTEND_URL}`);
+    res.redirect(`${FRONTEND_URL}/login`);
   }
 );
 
@@ -102,7 +102,7 @@ router.get(
 router.get(
   "/facebook/callback",
   passport.authenticate("facebook", {
-    failureRedirect: `${FRONTEND_URL}/index.html`,
+    failureRedirect: `${FRONTEND_URL}/login`,
     session: false
   }),
   (req, res) => {
@@ -135,7 +135,7 @@ router.get(
     }
     console.log("Generated token:", token);
 
-    res.redirect(`${FRONTEND_URL}`);
+    res.redirect(`${FRONTEND_URL}/login`);
   }
 );
 

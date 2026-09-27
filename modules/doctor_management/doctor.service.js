@@ -34,6 +34,50 @@ export async function getAllDoctorProfiles(limit = 10, offset = 0) {
 }
 
 /**
+ * Get doctor profiles joined with user details that have at least one
+ * active weekly schedule (i.e. currently accepting appointments).
+ */
+export async function getAvailableDoctors(limit = 50, offset = 0) {
+  const result = await pool.query(
+    `
+    SELECT
+      u.id AS user_id,
+      u.email,
+      u.username,
+      u.display_name,
+      u.avatar_url,
+      u.role,
+      d.id AS profile_id,
+      d.specialty,
+      d.license_number,
+      d.bio,
+      d.consultation_fee,
+      d.slot_duration_minutes,
+      d.created_at,
+      d.updated_at,
+      COALESCE(
+        ARRAY_AGG(DISTINCT ds.day_of_week) FILTER (WHERE ds.is_active = TRUE),
+        ARRAY[]::INTEGER[]
+      ) AS active_schedule_days
+    FROM users u
+    INNER JOIN doctor_profiles d ON u.id = d.user_id
+    LEFT JOIN doctor_schedules ds ON ds.doctor_id = u.id AND ds.is_active = TRUE
+    WHERE EXISTS (
+      SELECT 1
+      FROM doctor_schedules s
+      WHERE s.doctor_id = u.id AND s.is_active = TRUE
+    )
+    GROUP BY u.id, d.id
+    ORDER BY d.created_at DESC
+    LIMIT $1 OFFSET $2
+    `,
+    [limit, offset]
+  );
+
+  return result.rows;
+}
+
+/**
  * Get a single doctor profile and user data by user_id
  */
 export async function getDoctorProfileByUserId(userId) {
