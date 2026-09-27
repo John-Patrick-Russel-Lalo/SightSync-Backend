@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
 import { createNotification } from "../notification/notification.model.js";
 import { getUsersByRole } from "../users/users.model.js";
 
@@ -56,6 +56,27 @@ export async function handleGetAppointmentByPatientId(req, res) {
         return res.json({ patientId, appointments });
     } catch (error) {
         console.error("Error fetching appointments by patient:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleGetArchivedAppointments(req, res) {
+    try {
+        const archives = await getArchivedAppointments();
+        return res.json({ archives });
+    } catch (error) {
+        console.error("Error fetching archived appointments:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+export async function handleGetArchivedAppointmentsForCurrentUser(req, res) {
+    try {
+        const userId = req.user.id;
+        const archives = await getArchivedAppointmentsByUser(userId);
+        return res.json({ userId, archives });
+    } catch (error) {
+        console.error("Error fetching archived appointments for user:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }
@@ -166,7 +187,7 @@ export async function handleUpdateAppointmentStatus(req, res) {
         const { id } = req.params;
         const { status } = req.body;
 
-        if (!status || !['scheduled', 'declined', 'cancelled', 'completed'].includes(status)) {
+        if (!status || !['scheduled', 'declined', 'cancelled', 'completed', 'no_show'].includes(status)) {
             return res.status(400).json({ error: "Invalid status provided." });
         }
 
@@ -175,7 +196,18 @@ export async function handleUpdateAppointmentStatus(req, res) {
             return res.status(404).json({ error: "Appointment not found." });
         }
 
-        const updatedAppointment = await updateAppointmentStatus(id, status);
+        // Declined and no-show appointments are moved to the archive/history logs
+        // so their time slot becomes available again for rebooking.
+        let updatedAppointment;
+        if (status === 'declined' || status === 'no_show') {
+            const archivedResult = await archiveAppointment(id, status);
+            if (!archivedResult.success) {
+                return res.status(archivedResult.statusCode).json({ error: archivedResult.message });
+            }
+            updatedAppointment = archivedResult.data;
+        } else {
+            updatedAppointment = await updateAppointmentStatus(id, status);
+        }
 
         // Send notifications based on status
         try {
@@ -185,6 +217,9 @@ export async function handleUpdateAppointmentStatus(req, res) {
             } else if (status === 'declined' || status === 'cancelled') {
                 await createNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${new Date(appointment.start_time).toLocaleString()} has been declined by the administrator.`);
                 await createNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${new Date(appointment.start_time).toLocaleString()} has been declined.`);
+            } else if (status === 'no_show') {
+                await createNotification(appointment.patient_id, "Appointment No-Show", `Your appointment for ${new Date(appointment.start_time).toLocaleString()} was marked as a no-show.`);
+                await createNotification(appointment.doctor_id, "Appointment No-Show", `The appointment for patient ID: ${appointment.patient_id} at ${new Date(appointment.start_time).toLocaleString()} was marked as a no-show.`);
             }
         } catch (notifErr) {
             console.error("Failed to send status update notifications:", notifErr);

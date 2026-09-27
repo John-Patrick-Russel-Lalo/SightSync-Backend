@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
     handleGetAllDoctorProfiles,
+    handleGetAvailableDoctors,
     handleGetDoctorProfileByUserId,
     handleCreateDoctorProfile,
     handleUpdateDoctorProfile,
@@ -14,6 +15,7 @@ import { requireRole } from "../../shared/middleware/roleMiddleware.js";
 const router = Router();
 
 router.get("/", requireAuth, requireRole("admin", "doctor"), handleGetAllDoctorProfiles);
+router.get("/available", requireAuth, requireRole("patient"), handleGetAvailableDoctors);
 router.get("/:userId", requireAuth, requireRole("admin", "doctor"), handleGetDoctorProfileByUserId);
 router.post("/", requireAuth, requireRole("admin", "doctor"), handleCreateDoctorProfile);
 router.put("/:userId", requireAuth, requireRole("admin", "doctor"), handleUpdateDoctorProfile);

@@ -1,6 +1,7 @@
 // doctor.controller.js
 import {
     getAllDoctorProfiles,
+    getAvailableDoctors,
     getDoctorProfileByUserId,
     createDoctorProfile,
     updateDoctorProfile,
@@ -22,6 +23,23 @@ export async function handleGetAllDoctorProfiles(req, res) {
         res.json({ data: doctors, limit, offset, count: doctors.length });
     } catch (error) {
         console.error("Error fetching all doctor profiles:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+/**
+ * GET /doctors/available
+ * Get all doctors who are currently accepting appointments (patient-accessible)
+ */
+export async function handleGetAvailableDoctors(req, res) {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const doctors = await getAvailableDoctors(limit, offset);
+        res.json({ data: doctors, limit, offset, count: doctors.length });
+    } catch (error) {
+        console.error("Error fetching available doctors:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 }
