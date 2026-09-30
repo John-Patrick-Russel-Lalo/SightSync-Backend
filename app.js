@@ -29,6 +29,7 @@ const allowedOrigins = [
   "http://localhost:5500",
   "http://localhost:5173",
   "http://localhost:5174",
+  "https://sightsync-chi.vercel.app",
 ]
 
 app.use(
