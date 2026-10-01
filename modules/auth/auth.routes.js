@@ -6,6 +6,7 @@ import { requireRole } from "../../shared/middleware/roleMiddleware.js";
 import { register, login } from "./auth.controller.js";
 
 const FRONTEND_URL = process.env.FRONTEND_URL;
+const FRONTEND_URL_PROD = process.env.FRONTEND_URL_PROD;
 
 import jwt from "jsonwebtoken";
 
@@ -21,7 +22,7 @@ router.get(
 router.get(
   "/github/callback",
   passport.authenticate("github", {
-    failureRedirect: `${FRONTEND_URL}/login`,
+    failureRedirect: `${FRONTEND_URL || FRONTEND_URL_PROD}/login`,
     session: false
   }),
   (req, res) => {
@@ -49,7 +50,7 @@ router.get(
     console.log("Generated token:", token);
 
 
-    res.redirect(`${FRONTEND_URL}/login`);
+    res.redirect(`${FRONTEND_URL || FRONTEND_URL_PROD}/login`);
   }
 );
 
@@ -61,7 +62,7 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${FRONTEND_URL}/login`,
+    failureRedirect: `${FRONTEND_URL || FRONTEND_URL_PROD}/login`,
     session: false
   }),
   (req, res) => {
@@ -88,7 +89,7 @@ router.get(
 
     console.log("Generated token:", token);
 
-    res.redirect(`${FRONTEND_URL}/login`);
+    res.redirect(`${FRONTEND_URL || FRONTEND_URL_PROD}/login`);
   }
 );
 
@@ -102,7 +103,7 @@ router.get(
 router.get(
   "/facebook/callback",
   passport.authenticate("facebook", {
-    failureRedirect: `${FRONTEND_URL}/login`,
+    failureRedirect: `${FRONTEND_URL || FRONTEND_URL_PROD}/login`,
     session: false
   }),
   (req, res) => {
@@ -135,7 +136,7 @@ router.get(
     }
     console.log("Generated token:", token);
 
-    res.redirect(`${FRONTEND_URL}/login`);
+    res.redirect(`${FRONTEND_URL || FRONTEND_URL_PROD}/login`);
   }
 );
 
