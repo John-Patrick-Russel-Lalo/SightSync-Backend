@@ -255,7 +255,7 @@ describe("Appointment Service", () => {
       expect(result).toEqual({
         success: true,
         statusCode: 200,
-        data: mockArchived,
+        data: { ...mockArchived, has_payment_proof: false },
       });
       expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
       expect(mockClient.release).toHaveBeenCalled();
@@ -286,8 +286,8 @@ describe("Appointment Service", () => {
 
       const archives = await getArchivedAppointments();
       expect(archives).toEqual([
-        { id: 1, status: "no_show" },
-        { id: 2, status: "declined" },
+        { id: 1, status: "no_show", has_payment_proof: false },
+        { id: 2, status: "declined", has_payment_proof: false },
       ]);
     });
   });
@@ -299,7 +299,9 @@ describe("Appointment Service", () => {
       });
 
       const archives = await getArchivedAppointmentsByUser(42);
-      expect(archives).toEqual([{ id: 1, patient_id: 42, status: "declined" }]);
+      expect(archives).toEqual([
+        { id: 1, patient_id: 42, status: "declined", has_payment_proof: false },
+      ]);
     });
   });
 });
