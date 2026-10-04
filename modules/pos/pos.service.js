@@ -1,12 +1,15 @@
 // pos.service.js
 import pool from "../../shared/config/db.js";
+import { nowWallClock } from "../../shared/utils/dateTime.js";
 
 const PAYMENT_METHODS = ["cash", "card", "qr"];
 
 const roundToCent = (value) => Math.round(value * 100) / 100;
 
 export function generateReceiptNumber() {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  // Uses the clinic clock so the receipt date does not roll over a day early on a
+  // UTC production host.
+  const datePart = nowWallClock().slice(0, 10).replace(/-/g, "");
   const randomPart = Math.floor(100000 + Math.random() * 900000);
   return `RC-${datePart}-${randomPart}`;
 }
