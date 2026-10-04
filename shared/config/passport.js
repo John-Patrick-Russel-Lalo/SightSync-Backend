@@ -170,7 +170,7 @@ passport.use(
     {
       clientID: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
-      callbackURL: `${process.env.GITHUB_CLIENT_CALLBACK}` || `/auth/google/callback`,
+      callbackURL: process.env.GITHUB_CLIENT_CALLBACK || '/auth/google/callback',
       scope: ["user:email"], // Required to fetch email from GitHub
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -185,7 +185,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: `${process.env.GOOGLE_CLIENT_CALLBACK}` || `/auth/google/callback`,
+      callbackURL: process.env.GOOGLE_CLIENT_CALLBACK || '/auth/google/callback',
     },
     async (accessToken, refreshToken, profile, done) => {
       await handleOAuthCallback({ provider: "google", profile, done });
@@ -199,7 +199,7 @@ passport.use(
     {
       clientID: process.env.FACEBOOK_CLIENT_ID,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-      callbackURL: `${process.env.FACEBOOK_CLIENT_CALLBACK}` || `/auth/google/callback`,
+      callbackURL: process.env.FACEBOOK_CLIENT_CALLBACK || '/auth/google/callback',
       profileFields: ["id", "displayName", "photos", "email"],
     },
     async (accessToken, refreshToken, profile, done) => {

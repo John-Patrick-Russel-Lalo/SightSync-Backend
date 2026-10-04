@@ -1,6 +1,7 @@
 import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
 import { createNotification } from "../notification/notification.model.js";
 import { getUsersByRole } from "../users/users.model.js";
+import { formatWallClockDateTime, isValidDateString, isValidTimeString } from "../../shared/utils/dateTime.js";
 
 export async function handleGetAvailableSlots(req, res) {
     try {
@@ -91,6 +92,12 @@ export async function handleCreateAppointment(req, res) {
             });
         }
 
+        if (!isValidDateString(date) || !isValidTimeString(slot)) {
+            return res.status(400).json({
+                error: "Invalid date or time slot. Expected date as YYYY-MM-DD and slot as HH:MM (24-hour)."
+            });
+        }
+
         const result = await createAppointment({
             doctorId,
             patientId,
@@ -139,6 +146,12 @@ export async function handleCreateAppointmentByPatient(req, res) {
         if (!doctorId || !patientId || !date || !slot) {
             return res.status(400).json({
                 error: "doctorId, patientId, date (YYYY-MM-DD), and slot (HH:MM) are required."
+            });
+        }
+
+        if (!isValidDateString(date) || !isValidTimeString(slot)) {
+            return res.status(400).json({
+                error: "Invalid date or time slot. Expected date as YYYY-MM-DD and slot as HH:MM (24-hour)."
             });
         }
 
@@ -211,15 +224,19 @@ export async function handleUpdateAppointmentStatus(req, res) {
 
         // Send notifications based on status
         try {
+            // start_time is a timezone-less wall clock value, so format it as such
+            // instead of relying on the server's timezone.
+            const startTime = formatWallClockDateTime(appointment.start_time);
+
             if (status === 'scheduled') {
-                await createNotification(appointment.patient_id, "Appointment Approved", `Your appointment request for ${new Date(appointment.start_time).toLocaleString()} has been approved.`);
-                await createNotification(appointment.doctor_id, "Appointment Approved", `An appointment with patient ID: ${appointment.patient_id} for ${new Date(appointment.start_time).toLocaleString()} has been approved and scheduled.`);
+                await createNotification(appointment.patient_id, "Appointment Approved", `Your appointment request for ${startTime} has been approved.`);
+                await createNotification(appointment.doctor_id, "Appointment Approved", `An appointment with patient ID: ${appointment.patient_id} for ${startTime} has been approved and scheduled.`);
             } else if (status === 'declined' || status === 'cancelled') {
-                await createNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${new Date(appointment.start_time).toLocaleString()} has been declined by the administrator.`);
-                await createNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${new Date(appointment.start_time).toLocaleString()} has been declined.`);
+                await createNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${startTime} has been declined by the administrator.`);
+                await createNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${startTime} has been declined.`);
             } else if (status === 'no_show') {
-                await createNotification(appointment.patient_id, "Appointment No-Show", `Your appointment for ${new Date(appointment.start_time).toLocaleString()} was marked as a no-show.`);
-                await createNotification(appointment.doctor_id, "Appointment No-Show", `The appointment for patient ID: ${appointment.patient_id} at ${new Date(appointment.start_time).toLocaleString()} was marked as a no-show.`);
+                await createNotification(appointment.patient_id, "Appointment No-Show", `Your appointment for ${startTime} was marked as a no-show.`);
+                await createNotification(appointment.doctor_id, "Appointment No-Show", `The appointment for patient ID: ${appointment.patient_id} at ${startTime} was marked as a no-show.`);
             }
         } catch (notifErr) {
             console.error("Failed to send status update notifications:", notifErr);
