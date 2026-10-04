@@ -25,26 +25,27 @@ export async function createNotification(userId, title, detail) {
     return result.rows[0];
 }
 
-export async function markNotificationAsRead(id) {
+export async function markNotificationAsReadForUser(id, userId) {
     const result = await pool.query(
         `
         UPDATE notifications
         SET is_read = TRUE
-        WHERE id = $1
+        WHERE id = $1 AND user_id = $2
         RETURNING *
         `,
-        [id]
+        [id, userId]
     );
     return result.rows[0];
 }
 
 export async function markAllNotificationsAsRead(userId) {
-    await pool.query(
+    const result = await pool.query(
         `
         UPDATE notifications
         SET is_read = TRUE
-        WHERE user_id = $1
+        WHERE user_id = $1 AND is_read = FALSE
         `,
         [userId]
     );
+    return result;
 }

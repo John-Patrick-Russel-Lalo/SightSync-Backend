@@ -18,26 +18,13 @@ startAppointmentCron();
 
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { corsOptions } from "./shared/config/cors.js";
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-
-const allowedOrigins = [
-  "http://127.0.0.1:5500",
-  "http://localhost:5500",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://sightsync-chi.vercel.app",
-]
-
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true
-  })
-);
+app.use(cors(corsOptions));
 
 
 app.use("/auth", authRoutes);

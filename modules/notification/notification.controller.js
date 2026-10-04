@@ -1,13 +1,13 @@
 import {
-    getNotificationsByUserId,
-    markNotificationAsRead,
-    markAllNotificationsAsRead
-} from "./notification.model.js";
+    listNotifications,
+    markReadForUser,
+    markAllReadForUser
+} from "./notification.service.js";
 
 export async function getMyNotifications(req, res) {
     try {
         const userId = req.user.id;
-        const notifications = await getNotificationsByUserId(userId);
+        const notifications = await listNotifications(userId);
         res.status(200).json(notifications);
     } catch (error) {
         console.error("Error fetching notifications:", error);
@@ -20,7 +20,7 @@ export async function getMyNotifications(req, res) {
 export async function markRead(req, res) {
     try {
         const { id } = req.params;
-        const updated = await markNotificationAsRead(id);
+        const updated = await markReadForUser(req.user.id, id);
         if (!updated) {
             return res.status(404).json({ message: "Notification not found" });
         }
@@ -36,8 +36,8 @@ export async function markRead(req, res) {
 export async function markAllRead(req, res) {
     try {
         const userId = req.user.id;
-        await markAllNotificationsAsRead(userId);
-        res.status(200).json({ message: "All notifications marked as read" });
+        const { updated } = await markAllReadForUser(userId);
+        res.status(200).json({ message: "All notifications marked as read", updated });
     } catch (error) {
         console.error("Error marking all notifications as read:", error);
         res.status(500).json({
