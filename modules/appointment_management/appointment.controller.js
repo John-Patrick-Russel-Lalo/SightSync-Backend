@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
 import { sendNotification } from "../notification/notification.service.js";
 import { getUsersByRole } from "../users/users.model.js";
 import { formatWallClockDateTime, isValidDateString, isValidTimeString } from "../../shared/utils/dateTime.js";
@@ -300,18 +300,53 @@ export async function handleUpdatePaymentVerification(req, res) {
     }
 }
 
+// Statuses a doctor may set on their own appointment: mark the consultation as
+// ongoing when it starts and completed when it finishes. Everything else
+// (approval, declines, cancellation, no-show) stays with the admin.
+const DOCTOR_STATUS_VALUES = ['in_consultation', 'completed'];
+
+// Which current status each doctor-driven transition is allowed from, so an
+// appointment that was cancelled or never approved cannot be started.
+const DOCTOR_ALLOWED_FROM = {
+    in_consultation: ['scheduled'],
+    completed: ['scheduled', 'in_consultation']
+};
+
 export async function handleUpdateAppointmentStatus(req, res) {
     try {
         const { id } = req.params;
         const { status } = req.body;
 
-        if (!status || !['scheduled', 'declined', 'cancelled', 'completed', 'no_show'].includes(status)) {
+        if (!status || !['scheduled', 'declined', 'cancelled', 'completed', 'no_show', 'in_consultation'].includes(status)) {
             return res.status(400).json({ error: "Invalid status provided." });
         }
 
         const appointment = await getAppointmentById(id);
         if (!appointment) {
             return res.status(404).json({ error: "Appointment not found." });
+        }
+
+        const isAdmin = req.user.role === "admin";
+
+        if (!isAdmin) {
+            // Doctors may only update their own appointments, and only between
+            // the consultation states (ongoing / completed).
+            if (appointment.doctor_id !== req.user.id) {
+                return res.status(403).json({ error: "Forbidden: You can only update your own appointments." });
+            }
+
+            if (!DOCTOR_STATUS_VALUES.includes(status)) {
+                return res.status(403).json({
+                    error: "Doctors can only mark an appointment as in consultation or completed."
+                });
+            }
+
+            const allowedFrom = DOCTOR_ALLOWED_FROM[status] || [];
+            if (!allowedFrom.includes(appointment.status)) {
+                return res.status(409).json({
+                    error: `An appointment with status "${appointment.status}" cannot be marked as "${status}".`
+                });
+            }
         }
 
         // Appointments booked by a patient carry a half-payment proof that an
@@ -352,6 +387,10 @@ export async function handleUpdateAppointmentStatus(req, res) {
             } else if (status === 'no_show') {
                 await sendNotification(appointment.patient_id, "Appointment No-Show", `Your appointment for ${startTime} was marked as a no-show.`);
                 await sendNotification(appointment.doctor_id, "Appointment No-Show", `The appointment for patient ID: ${appointment.patient_id} at ${startTime} was marked as a no-show.`);
+            } else if (status === 'in_consultation') {
+                await sendNotification(appointment.patient_id, "Consultation Started", `Your consultation for ${startTime} has started.`);
+            } else if (status === 'completed') {
+                await sendNotification(appointment.patient_id, "Appointment Completed", `Your appointment for ${startTime} has been completed.`);
             }
         } catch (notifErr) {
             console.error("Failed to send status update notifications:", notifErr);
@@ -360,6 +399,87 @@ export async function handleUpdateAppointmentStatus(req, res) {
         return res.json({ message: "Appointment status updated.", appointment: updatedAppointment });
     } catch (error) {
         console.error("Error updating appointment status:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+// The consultation_notes table ships as a separate one-time SQL migration, so
+// report a clear setup message instead of a bare 500 when it is missing.
+function isMissingNotesTable(error) {
+    return error?.code === "42P01";
+}
+
+const NOTES_NOT_SETUP_ERROR =
+    "Consultation notes are not set up yet. Run modules/appointment_management/consultation_notes.sql against the database.";
+
+// POST /appointments/:id/notes
+// The doctor (or an admin) records a note about the patient while consulting.
+export async function handleCreateConsultationNote(req, res) {
+    try {
+        const { id } = req.params;
+        const note = (req.body.note || "").trim();
+
+        if (!note) {
+            return res.status(400).json({ error: "Note text is required." });
+        }
+
+        if (note.length > 2000) {
+            return res.status(400).json({ error: "Note cannot be longer than 2000 characters." });
+        }
+
+        const appointment = await getAppointmentById(id);
+        if (!appointment) {
+            return res.status(404).json({ error: "Appointment not found." });
+        }
+
+        if (req.user.role !== "admin" && appointment.doctor_id !== req.user.id) {
+            return res.status(403).json({ error: "Forbidden: You can only add notes to your own appointments." });
+        }
+
+        const createdNote = await createConsultationNote({
+            patientId: appointment.patient_id,
+            appointmentId: appointment.id,
+            doctorId: req.user.id,
+            note
+        });
+
+        return res.status(201).json({ message: "Note saved.", note: createdNote });
+    } catch (error) {
+        if (isMissingNotesTable(error)) {
+            return res.status(503).json({ error: NOTES_NOT_SETUP_ERROR });
+        }
+        console.error("Error creating consultation note:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+// GET /appointments/:id/notes
+export async function handleGetConsultationNotes(req, res) {
+    try {
+        const { id } = req.params;
+        const notes = await getConsultationNotesByAppointment(id);
+        return res.json({ notes });
+    } catch (error) {
+        if (isMissingNotesTable(error)) {
+            return res.status(503).json({ error: NOTES_NOT_SETUP_ERROR });
+        }
+        console.error("Error fetching consultation notes:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+// GET /appointments/patient/:patientId/notes
+// Full consultation-note history for the patient profile view.
+export async function handleGetPatientConsultationNotes(req, res) {
+    try {
+        const { patientId } = req.params;
+        const notes = await getConsultationNotesByPatient(patientId);
+        return res.json({ notes });
+    } catch (error) {
+        if (isMissingNotesTable(error)) {
+            return res.status(503).json({ error: NOTES_NOT_SETUP_ERROR });
+        }
+        console.error("Error fetching patient consultation notes:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 }

@@ -314,6 +314,51 @@ export async function getArchivedAppointmentsByUser(userId) {
     return toAppointmentRows(result.rows);
 }
 
+// Consultation notes are stored per patient (not per appointment) so a note
+// written during a consultation stays with the patient's history even after
+// the appointment itself is archived.
+const NOTE_WITH_DOCTOR_SQL = `
+    SELECT cn.id,
+           cn.patient_id,
+           cn.appointment_id,
+           cn.doctor_id,
+           cn.note,
+           cn.created_at,
+           cn.updated_at,
+           COALESCE(u.display_name, u.username) AS doctor_name,
+           u.avatar_url AS doctor_avatar_url
+    FROM consultation_notes cn
+    LEFT JOIN users u ON u.id = cn.doctor_id
+`;
+
+export async function createConsultationNote({ patientId, appointmentId, doctorId, note }) {
+    const result = await pool.query(
+        `
+        INSERT INTO consultation_notes (patient_id, appointment_id, doctor_id, note)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+        `,
+        [patientId, appointmentId || null, doctorId, note]
+    );
+    return result.rows[0];
+}
+
+export async function getConsultationNotesByAppointment(appointmentId) {
+    const result = await pool.query(
+        `${NOTE_WITH_DOCTOR_SQL} WHERE cn.appointment_id = $1 ORDER BY cn.created_at DESC`,
+        [appointmentId]
+    );
+    return result.rows;
+}
+
+export async function getConsultationNotesByPatient(patientId) {
+    const result = await pool.query(
+        `${NOTE_WITH_DOCTOR_SQL} WHERE cn.patient_id = $1 ORDER BY cn.created_at DESC`,
+        [patientId]
+    );
+    return result.rows;
+}
+
 export async function createAppointment({ doctorId, patientId, date, slot, notes, paymentProof }) {
     const client = await pool.connect();
 
