@@ -14,7 +14,9 @@ const router = express.Router();
 
 router.get("/", requireAuth, getMyProfile);
 
-router.patch("/", requireAuth, requireRole("admin"), updateProfile);
+// Admins and doctors may correct a patient's profile when the recorded
+// information is inaccurate. Both pass the target patient's user id as body.id.
+router.patch("/", requireAuth, requireRole("admin", "doctor"), updateProfile);
 
 router.put(
   "/profile",

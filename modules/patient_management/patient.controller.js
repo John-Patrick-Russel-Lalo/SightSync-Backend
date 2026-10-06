@@ -82,7 +82,14 @@ export async function updateProfile(req, res) {
     try {
         const userId = req.body.id;
 
-        phoneNumberValidator(req, res);
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "Patient id is required." });
+        }
+
+        // Stop here when the validator already rejected the payload, otherwise
+        // the controller would try to write a second response.
+        await phoneNumberValidator(req, res);
+        if (res.headersSent) return;
 
         
         const updatedProfile = await PatientModel.updatePatientProfile(userId, req.body);
