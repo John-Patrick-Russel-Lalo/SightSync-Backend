@@ -312,6 +312,10 @@ const DOCTOR_ALLOWED_FROM = {
     completed: ['scheduled', 'in_consultation']
 };
 
+// Terminal statuses: the row is moved out of appointments into
+// appointment_archive (history) instead of being updated in place.
+const ARCHIVED_STATUS_VALUES = ['declined', 'no_show', 'cancelled', 'completed'];
+
 export async function handleUpdateAppointmentStatus(req, res) {
     try {
         const { id } = req.params;
@@ -359,10 +363,12 @@ export async function handleUpdateAppointmentStatus(req, res) {
             });
         }
 
-        // Declined and no-show appointments are moved to the archive/history logs
-        // so their time slot becomes available again for rebooking.
+        // Terminal statuses are moved to the archive/history logs instead of
+        // staying in the active list, and so their time slot becomes available
+        // again for rebooking. Only non-terminal statuses (pending, scheduled,
+        // in consultation) remain in the appointments table.
         let updatedAppointment;
-        if (status === 'declined' || status === 'no_show') {
+        if (ARCHIVED_STATUS_VALUES.includes(status)) {
             const archivedResult = await archiveAppointment(id, status);
             if (!archivedResult.success) {
                 return res.status(archivedResult.statusCode).json({ error: archivedResult.message });
