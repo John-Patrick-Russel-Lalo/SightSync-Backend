@@ -1,6 +1,7 @@
 import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
 import { sendNotification } from "../notification/notification.service.js";
 import { getUsersByRole } from "../users/users.model.js";
+import { broadcastDoctorStatusChanges } from "../doctor_management/doctorStatus.service.js";
 import { formatWallClockDateTime, isValidDateString, isValidTimeString } from "../../shared/utils/dateTime.js";
 
 export async function handleGetAvailableSlots(req, res) {
@@ -376,6 +377,15 @@ export async function handleUpdateAppointmentStatus(req, res) {
             updatedAppointment = archivedResult.data;
         } else {
             updatedAppointment = await updateAppointmentStatus(id, status);
+        }
+
+        // The transition can flip the doctor between Available and In
+        // Consultation, so push the new presence immediately. The diff inside
+        // the broadcast makes it a cheap no-op when nothing changed.
+        try {
+            await broadcastDoctorStatusChanges();
+        } catch (broadcastErr) {
+            console.error("Failed to broadcast doctor status:", broadcastErr);
         }
 
         // Send notifications based on status

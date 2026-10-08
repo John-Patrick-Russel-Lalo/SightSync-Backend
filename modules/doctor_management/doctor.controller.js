@@ -9,6 +9,7 @@ import {
     getDoctorSchedulesByUserId,
     setDoctorSchedules,
 } from "./doctor.service.js";
+import { getDoctorStatusSnapshot } from "./doctorStatus.service.js";
 
 /**
  * GET /doctors
@@ -40,6 +41,21 @@ export async function handleGetAvailableDoctors(req, res) {
         res.json({ data: doctors, limit, offset, count: doctors.length });
     } catch (error) {
         console.error("Error fetching available doctors:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+}
+
+/**
+ * GET /doctors/status
+ * Current presence of every doctor as a { [userId]: status } map, so the
+ * walk-in checker can refresh over HTTP without waiting for a socket push.
+ */
+export async function handleGetDoctorStatuses(req, res) {
+    try {
+        const statuses = await getDoctorStatusSnapshot();
+        res.json({ statuses });
+    } catch (error) {
+        console.error("Error fetching doctor statuses:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
 }

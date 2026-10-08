@@ -2,12 +2,13 @@ import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import allowedOrigins from "../config/cors.js";
 import { parseCookieHeader } from "../utils/cookies.js";
-import { setEmitter } from "./bus.js";
+import { setEmitter, setAllEmitter } from "./bus.js";
 import {
     listNotifications,
     markReadForUser,
     markAllReadForUser
 } from "../../modules/notification/notification.service.js";
+import { getDoctorStatusSnapshot } from "../../modules/doctor_management/doctorStatus.service.js";
 
 let io = null;
 
@@ -47,6 +48,13 @@ export function initRealtime(httpServer) {
         return true;
     });
 
+    // Let the doctor-status service broadcast presence to every connected
+    // client (patients watch this on the booking page).
+    setAllEmitter((event, payload) => {
+        io.emit(event, payload);
+        return true;
+    });
+
     io.use(authenticateSocket);
 
     io.on("connection", async (socket) => {
@@ -63,6 +71,15 @@ export function initRealtime(httpServer) {
         } catch (error) {
             console.error("Failed to send notification snapshot:", error);
             socket.emit("notifications:snapshot", { notifications: [] });
+        }
+
+        // Doctor presence for the booking page, pushed on connect the same way.
+        try {
+            const statuses = await getDoctorStatusSnapshot();
+            socket.emit("doctor:status:snapshot", { statuses });
+        } catch (error) {
+            console.error("Failed to send doctor status snapshot:", error);
+            socket.emit("doctor:status:snapshot", { statuses: {} });
         }
 
         socket.on("notifications:list", async (ack) => {
