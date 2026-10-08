@@ -16,6 +16,9 @@ import notificationRoutes from "./modules/notification/notification.routes.js";
 import { startAppointmentCron } from "./shared/services/appointmentCron.js";
 startAppointmentCron();
 
+import { startDoctorStatusBroadcast } from "./modules/doctor_management/doctorStatus.service.js";
+startDoctorStatusBroadcast();
+
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import { corsOptions } from "./shared/config/cors.js";
