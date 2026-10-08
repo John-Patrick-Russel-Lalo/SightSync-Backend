@@ -28,6 +28,7 @@ export async function createSale(saleData) {
   const {
     items,
     customerName,
+    patientId = null,
     paymentMethod = "cash",
     amountTendered,
     discountAmount = 0,
@@ -55,6 +56,43 @@ export async function createSale(saleData) {
 
   try {
     await client.query("BEGIN");
+
+    // Optional registered patient (POS picker). Validated inside the
+    // transaction so a stale id never lands on the receipt or in My Orders.
+    let linkedPatientId = null;
+    let patientDisplayName = null;
+    if (patientId !== undefined && patientId !== null && patientId !== "") {
+      const parsedPatientId = Number(patientId);
+      if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
+        await client.query("ROLLBACK");
+        return {
+          success: false,
+          statusCode: 400,
+          message: "patientId must be a valid user id.",
+        };
+      }
+
+      const patientRes = await client.query(
+        `
+        SELECT COALESCE(NULLIF(TRIM(display_name), ''), username) AS name
+        FROM users
+        WHERE id = $1 AND role = 'patient'
+        `,
+        [parsedPatientId]
+      );
+
+      if (patientRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return {
+          success: false,
+          statusCode: 400,
+          message: "Selected patient was not found.",
+        };
+      }
+
+      linkedPatientId = parsedPatientId;
+      patientDisplayName = patientRes.rows[0].name;
+    }
 
     const saleLines = [];
     let subtotal = 0;
@@ -159,6 +197,7 @@ FROM inventory i
       INSERT INTO sales (
         receipt_number,
         customer_name,
+        patient_id,
         subtotal,
         discount_amount,
         tax_amount,
@@ -168,12 +207,14 @@ FROM inventory i
         change_amount,
         sold_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
       `,
       [
         receiptNumber,
-        customerName || null,
+        // Manual input wins; otherwise fall back to the selected patient's name.
+        customerName || patientDisplayName || null,
+        linkedPatientId,
         subtotal,
         discount,
         taxAmount,
@@ -240,6 +281,8 @@ export async function getAllSales(limit = 50, offset = 0) {
       s.id,
       s.receipt_number,
       s.customer_name,
+      s.patient_id,
+      COALESCE(NULLIF(TRIM(p.display_name), ''), p.username) AS patient_name,
       s.subtotal,
       s.discount_amount,
       s.tax_amount,
@@ -253,6 +296,7 @@ export async function getAllSales(limit = 50, offset = 0) {
       s.created_at
     FROM sales s
     LEFT JOIN users u ON s.sold_by = u.id
+    LEFT JOIN users p ON s.patient_id = p.id
     ORDER BY s.created_at DESC
     LIMIT $1 OFFSET $2
     `,
@@ -269,6 +313,8 @@ export async function getSaleById(id) {
       s.id,
       s.receipt_number,
       s.customer_name,
+      s.patient_id,
+      COALESCE(NULLIF(TRIM(p.display_name), ''), p.username) AS patient_name,
       s.subtotal,
       s.discount_amount,
       s.tax_amount,
@@ -282,6 +328,7 @@ export async function getSaleById(id) {
       s.created_at
     FROM sales s
     LEFT JOIN users u ON s.sold_by = u.id
+    LEFT JOIN users p ON s.patient_id = p.id
     WHERE s.id = $1
     `,
     [id]
@@ -329,6 +376,59 @@ export async function getSalesBySeller(userId, limit = 50, offset = 0) {
   );
 
   return result.rows;
+}
+
+// All sales linked to a registered patient (what the patient's My Orders
+// tracker shows), with line items attached to each receipt.
+export async function getSalesByPatient(patientId, limit = 50, offset = 0) {
+  const salesRes = await pool.query(
+    `
+    SELECT
+      s.id,
+      s.receipt_number,
+      s.customer_name,
+      s.subtotal,
+      s.discount_amount,
+      s.tax_amount,
+      s.total,
+      s.payment_method,
+      s.status,
+      s.sold_by,
+      u.username AS sold_by_name,
+      s.created_at
+    FROM sales s
+    LEFT JOIN users u ON s.sold_by = u.id
+    WHERE s.patient_id = $1
+    ORDER BY s.created_at DESC
+    LIMIT $2 OFFSET $3
+    `,
+    [patientId, limit, offset]
+  );
+
+  const sales = salesRes.rows;
+  if (sales.length === 0) return [];
+
+  const itemsRes = await pool.query(
+    `
+    SELECT id, sale_id, inventory_id, sku, product_name, category, unit_price, quantity, line_total
+    FROM sale_items
+    WHERE sale_id = ANY($1::int[])
+    ORDER BY id
+    `,
+    [sales.map((sale) => sale.id)]
+  );
+
+  const itemsBySale = new Map();
+  for (const item of itemsRes.rows) {
+    const list = itemsBySale.get(item.sale_id) || [];
+    list.push(item);
+    itemsBySale.set(item.sale_id, list);
+  }
+
+  return sales.map((sale) => ({
+    ...sale,
+    items: itemsBySale.get(sale.id) || [],
+  }));
 }
 
 export async function getSalesSummary(startDate, endDate) {

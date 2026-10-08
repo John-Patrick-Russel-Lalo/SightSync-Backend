@@ -4,6 +4,7 @@ import {
   getAllSales,
   getSaleById,
   getSalesBySeller,
+  getSalesByPatient,
   getSalesSummary,
   voidSale,
 } from "./pos.service.js";
@@ -13,6 +14,7 @@ export async function handleCreateSale(req, res) {
     const {
       items,
       customerName,
+      patientId,
       paymentMethod,
       amountTendered,
       discountAmount,
@@ -36,6 +38,7 @@ export async function handleCreateSale(req, res) {
     const result = await createSale({
       items,
       customerName,
+      patientId,
       paymentMethod,
       amountTendered,
       discountAmount,
@@ -102,6 +105,21 @@ export async function handleGetSalesBySeller(req, res) {
     res.json({ data: sales, count: sales.length, limit, offset });
   } catch (error) {
     console.error("Error fetching sales by seller:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+}
+
+// GET /pos/sales/mine — the signed-in patient's own order history.
+export async function handleGetMySales(req, res) {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+
+    const sales = await getSalesByPatient(req.user.id, limit, offset);
+
+    res.json({ data: sales, count: sales.length, limit, offset });
+  } catch (error) {
+    console.error("Error fetching patient sales:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 }

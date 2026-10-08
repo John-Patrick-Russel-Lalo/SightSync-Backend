@@ -4,6 +4,7 @@ import {
   createSale,
   getAllSales,
   getSaleById,
+  getSalesByPatient,
   getSalesSummary,
   voidSale,
   generateReceiptNumber,
@@ -176,6 +177,159 @@ describe("POS Service", () => {
       );
       expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
       expect(mockClient.release).toHaveBeenCalled();
+    });
+  });
+
+  describe("createSale with a selected patient", () => {
+      it("should reject a patientId that is not a valid id", async () => {
+        mockClient.query.mockResolvedValueOnce({}); // BEGIN
+
+        const result = await createSale({
+          items: [{ inventoryId: 1, quantity: 1 }],
+          patientId: "not-a-number",
+        });
+
+        expect(result).toEqual({
+          success: false,
+          statusCode: 400,
+          message: "patientId must be a valid user id.",
+        });
+        expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+        expect(mockClient.release).toHaveBeenCalled();
+      });
+
+      it("should reject a patientId that is not a registered patient", async () => {
+        mockClient.query
+          .mockResolvedValueOnce({}) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }); // patient select
+
+        const result = await createSale({
+          items: [{ inventoryId: 1, quantity: 1 }],
+          patientId: 99,
+        });
+
+        expect(result).toEqual({
+          success: false,
+          statusCode: 400,
+          message: "Selected patient was not found.",
+        });
+        expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+        expect(mockClient.release).toHaveBeenCalled();
+      });
+
+      it("should store the patient id and default the customer name from the patient", async () => {
+        const mockCreatedSale = { id: 10, receipt_number: "RC-20261008-111111", status: "completed" };
+
+        mockClient.query
+          .mockResolvedValueOnce({}) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ name: "Juan Dela Cruz" }] }) // patient select
+          .mockResolvedValueOnce({
+            rows: [{
+              id: 1,
+              sku: "FR-001",
+              category: "frame",
+              quantity: 10,
+              selling_price: 500,
+              frame_name: "Ray-Ban Aviator",
+              lens_name: "",
+            }],
+          }) // inventory select (locked)
+          .mockResolvedValueOnce({ rows: [] }) // inventory stock decrement
+          .mockResolvedValueOnce({ rows: [mockCreatedSale] }) // INSERT sales
+          .mockResolvedValueOnce({ rows: [] }) // INSERT sale_items
+          .mockResolvedValueOnce({}); // COMMIT
+
+        const result = await createSale({
+          items: [{ inventoryId: 1, quantity: 1 }],
+          patientId: 7,
+          paymentMethod: "cash",
+          soldBy: 5,
+        });
+
+        expect(result.success).toBe(true);
+
+        const insertCall = mockClient.query.mock.calls.find(([sql]) =>
+          String(sql).includes("INSERT INTO sales")
+        );
+        expect(insertCall).toBeTruthy();
+        // customer_name falls back to the patient's name, patient_id links the row.
+        expect(insertCall[1][1]).toBe("Juan Dela Cruz");
+        expect(insertCall[1][2]).toBe(7);
+        expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+      });
+
+      it("should let a manual customer name win over the patient name", async () => {
+        const mockCreatedSale = { id: 11, receipt_number: "RC-20261008-222222", status: "completed" };
+
+        mockClient.query
+          .mockResolvedValueOnce({}) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ name: "Juan Dela Cruz" }] }) // patient select
+          .mockResolvedValueOnce({
+            rows: [{
+              id: 1,
+              sku: "FR-001",
+              category: "frame",
+              quantity: 10,
+              selling_price: 500,
+              frame_name: "Ray-Ban Aviator",
+              lens_name: "",
+            }],
+          }) // inventory select (locked)
+          .mockResolvedValueOnce({ rows: [] }) // inventory stock decrement
+          .mockResolvedValueOnce({ rows: [mockCreatedSale] }) // INSERT sales
+          .mockResolvedValueOnce({ rows: [] }) // INSERT sale_items
+          .mockResolvedValueOnce({}); // COMMIT
+
+        const result = await createSale({
+          items: [{ inventoryId: 1, quantity: 1 }],
+          patientId: 7,
+          customerName: "Juan D. Cruz (Guest)",
+        });
+
+        expect(result.success).toBe(true);
+
+        const insertCall = mockClient.query.mock.calls.find(([sql]) =>
+          String(sql).includes("INSERT INTO sales")
+        );
+        expect(insertCall[1][1]).toBe("Juan D. Cruz (Guest)");
+        expect(insertCall[1][2]).toBe(7);
+      });
+    });
+
+  describe("getSalesByPatient", () => {
+    it("attaches line items to each linked sale", async () => {
+      pool.query
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 10, receipt_number: "RC-20261008-111111", total: 500 },
+            { id: 11, receipt_number: "RC-20261008-222222", total: 300 },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 1, sale_id: 10, product_name: "Ray-Ban Aviator" },
+            { id: 2, sale_id: 11, product_name: "1.67 Lens" },
+          ],
+        });
+
+      const sales = await getSalesByPatient(7, 50, 0);
+
+      expect(sales).toHaveLength(2);
+      expect(sales[0].items).toEqual([{ id: 1, sale_id: 10, product_name: "Ray-Ban Aviator" }]);
+      expect(sales[1].items).toEqual([{ id: 2, sale_id: 11, product_name: "1.67 Lens" }]);
+      expect(pool.query).toHaveBeenCalledWith(
+        expect.stringContaining("WHERE s.patient_id = $1"),
+        [7, 50, 0]
+      );
+    });
+
+    it("returns an empty list without a second query when the patient has no sales", async () => {
+      pool.query.mockResolvedValueOnce({ rows: [] });
+
+      const sales = await getSalesByPatient(7, 50, 0);
+
+      expect(sales).toEqual([]);
+      expect(pool.query).toHaveBeenCalledTimes(1);
     });
   });
 
