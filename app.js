@@ -30,6 +30,9 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 
 
+app.use("/health", (req, res) => {
+    res.json({ message: "OK" });
+});
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 app.use("/lenses", lensRoutes);
