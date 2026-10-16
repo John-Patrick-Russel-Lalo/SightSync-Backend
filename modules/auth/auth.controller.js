@@ -1,17 +1,30 @@
-import { createUser, loginUser } from "./auth.model.js";
-import { uniqueEmailValidator } from "./auth.service.js";
+import { createUser, loginUser, findUserByEmail } from "./auth.model.js";
 import jwt from "jsonwebtoken";
+
 export async function register(req, res) {
   try {
-    const { email, firstName, lastName, password } = req.body;
+    const email = String(req.body.email ?? "").trim().toLowerCase();
+    const firstName = String(req.body.firstName ?? "").trim();
+    const lastName = String(req.body.lastName ?? "").trim();
+    const password = String(req.body.password ?? "").trim();
 
-    const username = `${firstName} ${lastName}`;
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: "Email and password are required." });
+    }
 
-    await uniqueEmailValidator(req, res);
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
+    const username = `${firstName} ${lastName}`.trim();
 
     const user = await createUser(email, username, password);
 
-    res.status(201).json(user);
+    const { password: _password, ...safeUser } = user;
+    res.status(201).json(safeUser);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal server error" });
@@ -20,10 +33,10 @@ export async function register(req, res) {
 
 export async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const email = String(req.body.email ?? "").trim().toLowerCase();
+    const password = String(req.body.password ?? "").trim();
 
     const user = await loginUser(email, password);
-    console.log(password)
 
     if (!user) {
       return res.status(401).json({
@@ -50,9 +63,8 @@ export async function login(req, res) {
       sameSite: "none",
     });
 
-    console.log("Generated token:", token);
-
-    res.status(200).json({ user, token });
+    const { password: _password, ...safeUser } = user;
+    res.status(200).json({ user: safeUser, token });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal server error" });

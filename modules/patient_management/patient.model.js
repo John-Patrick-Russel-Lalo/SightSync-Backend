@@ -17,8 +17,6 @@ export async function getPatientProfileByUserId(userId) {
             p.blood_type,
             p.emergency_contact_name,
             p.emergency_contact_phone,
-            p.insurance_provider,
-            p.insurance_policy_number,
             p.profile_edit_count,
             p.updated_at
         FROM users u
@@ -129,9 +127,7 @@ export async function updatePatientProfileByUser(
         phoneNumber,
         bloodType,
         emergencyContactName,
-        emergencyContactPhone,
-        insuranceProvider,
-        insurancePolicyNumber
+        emergencyContactPhone
     } = profileData;
 
     const client = await pool.connect();
@@ -178,14 +174,12 @@ export async function updatePatientProfileByUser(
                 blood_type = COALESCE($4, blood_type),
                 emergency_contact_name = COALESCE($5, emergency_contact_name),
                 emergency_contact_phone = COALESCE($6, emergency_contact_phone),
-                insurance_provider = COALESCE($7, insurance_provider),
-                insurance_policy_number = COALESCE($8, insurance_policy_number),
                 profile_edit_count = CASE
-                    WHEN $9 = FALSE THEN profile_edit_count + 1
+                    WHEN $7 = FALSE THEN profile_edit_count + 1
                     ELSE profile_edit_count
                 END,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = $10
+            WHERE user_id = $8
             RETURNING *
             `,
             [
@@ -195,8 +189,6 @@ export async function updatePatientProfileByUser(
                 bloodType || null,
                 emergencyContactName || null,
                 emergencyContactPhone || null,
-                insuranceProvider || null,
-                insurancePolicyNumber || null,
                 isAdmin,
                 userId
             ]
@@ -273,9 +265,7 @@ export async function updatePatientProfile(userId, profileData) {
         phoneNumber,
         bloodType,
         emergencyContactName,
-        emergencyContactPhone,
-        insuranceProvider,
-        insurancePolicyNumber
+        emergencyContactPhone
     } = profileData;
 
     const client = await pool.connect();
@@ -294,10 +284,8 @@ export async function updatePatientProfile(userId, profileData) {
                 blood_type = COALESCE($4, blood_type),
                 emergency_contact_name = COALESCE($5, emergency_contact_name),
                 emergency_contact_phone = COALESCE($6, emergency_contact_phone),
-                insurance_provider = COALESCE($7, insurance_provider),
-                insurance_policy_number = COALESCE($8, insurance_policy_number),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = $9
+            WHERE user_id = $7
             RETURNING *
             `,
             [
@@ -307,8 +295,6 @@ export async function updatePatientProfile(userId, profileData) {
                 bloodType || null,
                 emergencyContactName || null,
                 emergencyContactPhone || null,
-                insuranceProvider || null,
-                insurancePolicyNumber || null,
                 userId
             ]
         );
@@ -354,10 +340,11 @@ export async function updatePatientStatus(patientId, status) {
 }
 
 // A full clinical report for one patient: personal info, every appointment
-// (active and archived) with the attending doctor's name, and the patient's
-// consultation-note history. Used by the admin and doctor portals.
+// (active and archived) with the attending doctor's name, the patient's
+// consultation-note history, and the POS store purchases linked to them.
+// Used by the admin and doctor portals.
 export async function getPatientReport(patientId) {
-    const [patientRes, activeRes, archivedRes, notesRes] = await Promise.all([
+    const [patientRes, activeRes, archivedRes, notesRes, salesRes] = await Promise.all([
         pool.query(
             `
             SELECT
@@ -375,8 +362,6 @@ export async function getPatientReport(patientId) {
                 p.blood_type,
                 p.emergency_contact_name,
                 p.emergency_contact_phone,
-                p.insurance_provider,
-                p.insurance_policy_number,
                 p.updated_at AS profile_updated_at
             FROM users u
             LEFT JOIN patient_profiles p ON u.id = p.user_id
@@ -448,8 +433,57 @@ export async function getPatientReport(patientId) {
             ORDER BY cn.created_at DESC
             `,
             [patientId]
+        ),
+        // Store purchases (POS) linked to this registered patient. Keeps the
+        // clinical summary in sync with what the patient actually bought.
+        pool.query(
+            `
+            SELECT
+                s.id,
+                s.receipt_number,
+                s.customer_name,
+                s.subtotal,
+                s.discount_amount,
+                s.tax_amount,
+                s.total,
+                s.payment_method,
+                s.status,
+                s.created_at,
+                COALESCE(u.display_name, u.username) AS sold_by_name
+            FROM sales s
+            LEFT JOIN users u ON u.id = s.sold_by
+            WHERE s.patient_id = $1
+            ORDER BY s.created_at DESC
+            `,
+            [patientId]
         )
     ]);
+
+    // Attach each receipt's line items in one batch.
+    let orders = [];
+    if (salesRes.rows.length > 0) {
+        const itemsRes = await pool.query(
+            `
+            SELECT id, sale_id, inventory_id, sku, product_name, category, unit_price, quantity, line_total
+            FROM sale_items
+            WHERE sale_id = ANY($1::int[])
+            ORDER BY id
+            `,
+            [salesRes.rows.map((sale) => sale.id)]
+        );
+
+        const itemsBySale = new Map();
+        for (const item of itemsRes.rows) {
+            const list = itemsBySale.get(item.sale_id) || [];
+            list.push(item);
+            itemsBySale.set(item.sale_id, list);
+        }
+
+        orders = salesRes.rows.map((sale) => ({
+            ...sale,
+            items: itemsBySale.get(sale.id) || [],
+        }));
+    }
 
     // Merge active and archived appointments, newest first.
     const appointments = [...activeRes.rows, ...archivedRes.rows].sort(
@@ -469,10 +503,17 @@ export async function getPatientReport(patientId) {
         return sum + (Number.isFinite(amount) ? amount : 0);
     }, 0);
 
+    const completedOrders = orders.filter((o) => o.status === "completed");
+    const totalOrderSpend = completedOrders.reduce((sum, o) => {
+        const amount = Number(o.total);
+        return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+
     return {
         patient: patientRes.rows[0] || null,
         appointments,
         notes: notesRes.rows,
+        orders,
         summary: {
             totalAppointments: appointments.length,
             completedAppointments: completedCount,
@@ -482,6 +523,10 @@ export async function getPatientReport(patientId) {
             lastVisit: lastVisit ? lastVisit.start_time : null,
             lastVisitDoctor: lastVisit ? lastVisit.doctor_name : null,
             totalPaid: Math.round(totalPaid * 100) / 100,
+            totalOrders: orders.length,
+            completedOrders: completedOrders.length,
+            totalOrderSpend: Math.round(totalOrderSpend * 100) / 100,
+            totalSpend: Math.round((totalPaid + totalOrderSpend) * 100) / 100,
         },
         generatedAt: new Date().toISOString(),
     };

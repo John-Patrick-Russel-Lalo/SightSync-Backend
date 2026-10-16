@@ -142,9 +142,9 @@ export async function findUserByEmail(email) {
     `
     SELECT *
     FROM users
-    WHERE email = $1
+    WHERE LOWER(email) = LOWER($1)
     `,
-    [email]
+    [String(email).trim()]
   );
 
   return result.rows[0] || null;
@@ -215,17 +215,20 @@ export async function createUserByProvider(user) {
 export async function createUser(email, username, password) {
   const client = await pool.connect();
 
+  const normalizedEmail = String(email ?? "").trim().toLowerCase();
+  const normalizedPassword = String(password ?? "").trim();
+
   try {
     await client.query("BEGIN");
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
     const userResult = await client.query(
       `
       INSERT INTO users (provider, email, username, password, role) 
       VALUES ($1, $2, $3, $4, $5) 
       RETURNING *
       `,
-      ["local", email, username, hashedPassword, "patient"]
+      ["local", normalizedEmail, username, hashedPassword, "patient"]
     );
     const newUser = userResult.rows[0];
 
@@ -246,12 +249,14 @@ export async function createUser(email, username, password) {
 
 // 6. Local Login
 export async function loginUser(email, password) {
-  // Find the user by email regardless of their current provider value
+  // Find the user by email regardless of their current provider value.
+  // Email is trimmed and compared case-insensitively so stray spaces or
+  // capitalization do not cause false "invalid credentials" results.
   const result = await pool.query(
-    `SELECT * FROM users WHERE email = $1`,
-    [email]
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1)`,
+    [String(email ?? "").trim()]
   );
-  
+
   const user = result.rows[0];
 
   // Check if user exists and actually has a password set
@@ -259,7 +264,10 @@ export async function loginUser(email, password) {
     return null; // Return null if no account exists or if account was created via OAuth without a password
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
+  const isPasswordValid = await bcrypt.compare(
+    String(password ?? "").trim(),
+    user.password
+  );
   if (!isPasswordValid) {
     return null;
   }
