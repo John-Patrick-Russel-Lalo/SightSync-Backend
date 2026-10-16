@@ -33,6 +33,7 @@ function buildReportOverviewPrompt(report) {
     const summary = report.summary || {};
     const notes = report.notes || [];
     const appointments = report.appointments || [];
+    const orders = report.orders || [];
 
     const lines = [
         "You are assisting staff at an optometry clinic. Write a short clinical overview of a patient based on the report data below.",
@@ -49,7 +50,10 @@ function buildReportOverviewPrompt(report) {
     lines.push(`Pending appointments: ${summary.pendingAppointments ?? 0}`);
     lines.push(`Consultation notes on file: ${summary.consultationNotes ?? 0}`);
     lines.push(`Last visit: ${summary.lastVisit || "None"}${summary.lastVisitDoctor ? ` (with ${summary.lastVisitDoctor})` : ""}`);
-    lines.push(`Total paid: PHP ${summary.totalPaid ?? 0}`);
+    lines.push(`Store orders: ${summary.totalOrders ?? 0} (completed: ${summary.completedOrders ?? 0})`);
+    lines.push(`Total spend (visits + store orders): PHP ${summary.totalSpend ?? 0}`);
+    lines.push(` - of which visits: PHP ${summary.totalPaid ?? 0}`);
+    lines.push(` - of which store orders: PHP ${summary.totalOrderSpend ?? 0}`);
 
     if (notes.length > 0) {
         lines.push("", "Recent consultation notes (latest first):");
@@ -68,9 +72,23 @@ function buildReportOverviewPrompt(report) {
         }
     }
 
+    if (orders.length > 0) {
+        lines.push("", "Store purchases (latest first):");
+        for (const order of orders.slice(0, 5)) {
+            const itemNames = (order.items || [])
+                .map((item) => `${item.product_name} x${item.quantity}`)
+                .join(", ");
+            lines.push(
+                `- ${order.status || "unknown"} receipt ${order.receipt_number} (${order.created_at || "date unknown"}) total PHP ${order.total}${itemNames ? `: ${itemNames}` : ""}`
+            );
+        }
+    } else {
+        lines.push("", "No store purchases on file.");
+    }
+
     lines.push(
         "",
-        "Return a single concise overview paragraph (3-5 sentences) covering who the patient is, visit and appointment history, payments and attendance, key clinical concerns from the notes, and any notable patterns."
+        "Return a single concise overview paragraph (3-5 sentences) covering who the patient is, visit and appointment history, store purchases, payments and attendance, key clinical concerns from the notes, and any notable patterns."
     );
 
     return lines.join("\n");

@@ -35,9 +35,9 @@ export const phoneNumberValidator = async (req, res) => {
 export const updateMyPatientProfileValidator = async (req, res, next) => {
     try {
 
-        const { dateOfBirth, gender, phoneNumber, bloodType, emergencyContactName, emergencyContactPhone, insuranceProvider, insurancePolicyNumber } = req.body;
+        const { dateOfBirth, gender, phoneNumber, bloodType, emergencyContactName, emergencyContactPhone } = req.body;
 
-        if (!dateOfBirth || !gender || !phoneNumber || !bloodType || !emergencyContactName || !emergencyContactPhone || !insuranceProvider || !insurancePolicyNumber) {
+        if (!dateOfBirth || !gender || !phoneNumber || !bloodType || !emergencyContactName || !emergencyContactPhone) {
             return res.status(400).json({
                 success: false,
                 message: "All fields are required",
