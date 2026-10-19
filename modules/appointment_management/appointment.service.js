@@ -229,15 +229,15 @@ export async function updateAppointmentPaymentStatus(id, { status, verifiedBy, r
     return toAppointmentRow(result.rows[0]);
 }
 
-export async function updateAppointmentStatus(id, status) {
+export async function updateAppointmentStatus(id, status, declineReason = null) {
     const result = await pool.query(
-        `UPDATE appointments SET status = $1 WHERE id = $2 RETURNING *`,
-        [status, id]
+        `UPDATE appointments SET status = $1, decline_reason = $3 WHERE id = $2 RETURNING *`,
+        [status, id, declineReason || null]
     );
     return toAppointmentRow(result.rows[0]);
 }
 
-export async function archiveAppointment(id, status) {
+export async function archiveAppointment(id, status, declineReason = null) {
     const client = await pool.connect();
 
     try {
@@ -254,18 +254,20 @@ export async function archiveAppointment(id, status) {
                 doctor_id, patient_id, start_time, end_time, notes, status, created_at, updated_at,
                 payment_proof, payment_proof_mime, payment_proof_filename,
                 consultation_fee, payment_amount, payment_status,
-                payment_rejection_reason, payment_verified_by, payment_verified_at
+                payment_rejection_reason, payment_verified_by, payment_verified_at,
+                decline_reason
             )
             SELECT id, doctor_id, patient_id, start_time, end_time, notes, $2, created_at, CURRENT_TIMESTAMP,
                    payment_proof, payment_proof_mime, payment_proof_filename,
                    consultation_fee, payment_amount, payment_status,
-                   payment_rejection_reason, payment_verified_by, payment_verified_at
+                   payment_rejection_reason, payment_verified_by, payment_verified_at,
+                   $3
             FROM appointments
             WHERE id = $1
             ON CONFLICT (source_appointment_id) WHERE source_appointment_id IS NOT NULL DO NOTHING
             RETURNING *
             `,
-            [id, status]
+            [id, status, declineReason || null]
         );
 
         if (archivedRes.rows.length === 0) {
