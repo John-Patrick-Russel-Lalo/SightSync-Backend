@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, approveAppointment, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
 import { sendNotification } from "../notification/notification.service.js";
 import { getUsersByRole } from "../users/users.model.js";
 import { broadcastDoctorStatusChanges } from "../doctor_management/doctorStatus.service.js";
@@ -380,6 +380,16 @@ export async function handleUpdateAppointmentStatus(req, res) {
                 return res.status(archivedResult.statusCode).json({ error: archivedResult.message });
             }
             updatedAppointment = archivedResult.data;
+        } else if (status === 'scheduled') {
+            // Approving is what actually takes the time slot, so the slot is
+            // checked for conflicts again here. A request that was still
+            // pending did not hold the slot, so another request for the same
+            // time may already have been approved in the meantime.
+            const approvedResult = await approveAppointment(id);
+            if (!approvedResult.success) {
+                return res.status(approvedResult.statusCode).json({ error: approvedResult.message });
+            }
+            updatedAppointment = approvedResult.data;
         } else {
             updatedAppointment = await updateAppointmentStatus(id, status, declineReason);
         }
