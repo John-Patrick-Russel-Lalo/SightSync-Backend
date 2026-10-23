@@ -37,6 +37,14 @@ function minutesToTime(totalMinutes) {
     return `${hours}:${minutes}`;
 }
 
+// The only statuses that actually hold on to a time slot.
+//
+// A request that is still "pending" is just a request: the admin still has to
+// review the half-payment and approve it, so the slot must stay open for
+// everybody else until that happens. Once the request is approved it becomes
+// "scheduled" and from that moment on the slot is genuinely taken.
+export const SLOT_HOLDING_STATUSES = ["scheduled", "in_consultation"];
+
 export async function getAvailableSlots(doctorId, selectedDate) {
     // 1. Fetch Doctor Profile for slot duration
     const profileRes = await pool.query(
@@ -87,7 +95,9 @@ export async function getAvailableSlots(doctorId, selectedDate) {
 
     if (shifts.length === 0) return [];
 
-    // 3. Fetch Booked Appointments
+    // 3. Fetch the appointments that actually hold the slot.
+    // Pending requests are deliberately left out: they are not approved yet, so
+    // they must not remove the slot from the availability list.
     const bookedRes = await pool.query(
         `
         SELECT 
@@ -97,9 +107,9 @@ export async function getAvailableSlots(doctorId, selectedDate) {
         WHERE doctor_id = $1 
           AND start_time >= $2::date 
           AND start_time < ($2::date + INTERVAL '1 day')
-          AND status NOT IN ('cancelled', 'declined', 'no_show')
+          AND status::text = ANY($3::text[])
         `,
-        [doctorId, selectedDate]
+        [doctorId, selectedDate, SLOT_HOLDING_STATUSES]
     );
 
     const bookedSlots = bookedRes.rows.map((b) => ({
@@ -229,15 +239,106 @@ export async function updateAppointmentPaymentStatus(id, { status, verifiedBy, r
     return toAppointmentRow(result.rows[0]);
 }
 
-export async function updateAppointmentStatus(id, status) {
+export async function updateAppointmentStatus(id, status, declineReason = null) {
     const result = await pool.query(
-        `UPDATE appointments SET status = $1 WHERE id = $2 RETURNING *`,
-        [status, id]
+        `UPDATE appointments SET status = $1, decline_reason = $3 WHERE id = $2 RETURNING *`,
+        [status, id, declineReason || null]
     );
     return toAppointmentRow(result.rows[0]);
 }
 
-export async function archiveAppointment(id, status) {
+// Approving a request is the moment its time slot is actually taken, so the
+// conflict check runs again here instead of trusting the check that ran when
+// the request was created. While a request was pending, other requests for the
+// same slot could have been made and approved, so approving one of them may
+// now be impossible.
+export async function approveAppointment(id) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const apptRes = await client.query(
+            `
+            SELECT id, doctor_id,
+                   TO_CHAR(start_time, 'YYYY-MM-DD HH24:MI:SS') AS start_time,
+                   TO_CHAR(end_time, 'YYYY-MM-DD HH24:MI:SS') AS end_time
+            FROM appointments
+            WHERE id = $1
+            `,
+            [id]
+        );
+
+        if (apptRes.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 404,
+                message: "Appointment not found."
+            };
+        }
+
+        const appointment = apptRes.rows[0];
+
+        // Lock the doctor row so two approvals for the same doctor cannot run
+        // the conflict check at the same time. This is the same guard the
+        // booking path uses, so a booking and an approval cannot slip past
+        // each other either.
+        await client.query(
+            `SELECT user_id FROM doctor_profiles WHERE user_id = $1 FOR UPDATE`,
+            [appointment.doctor_id]
+        );
+
+        const conflictCheck = await client.query(
+            `
+            SELECT id
+            FROM appointments
+            WHERE doctor_id = $1
+              AND status::text = ANY($4::text[])
+              AND id <> $5
+              AND start_time < $3::timestamp
+              AND end_time > $2::timestamp
+            `,
+            [
+                appointment.doctor_id,
+                appointment.start_time,
+                appointment.end_time,
+                SLOT_HOLDING_STATUSES,
+                id,
+            ]
+        );
+
+        if (conflictCheck.rows.length > 0) {
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                statusCode: 409,
+                message:
+                    "This time slot has already been taken by another approved appointment. Decline this request or ask the patient to pick another time.",
+            };
+        }
+
+        const updatedRes = await client.query(
+            `UPDATE appointments SET status = 'scheduled' WHERE id = $1 RETURNING *`,
+            [id]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            statusCode: 200,
+            data: toAppointmentRow(updatedRes.rows[0])
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+export async function archiveAppointment(id, status, declineReason = null) {
     const client = await pool.connect();
 
     try {
@@ -254,18 +355,20 @@ export async function archiveAppointment(id, status) {
                 doctor_id, patient_id, start_time, end_time, notes, status, created_at, updated_at,
                 payment_proof, payment_proof_mime, payment_proof_filename,
                 consultation_fee, payment_amount, payment_status,
-                payment_rejection_reason, payment_verified_by, payment_verified_at
+                payment_rejection_reason, payment_verified_by, payment_verified_at,
+                decline_reason
             )
             SELECT id, doctor_id, patient_id, start_time, end_time, notes, $2, created_at, CURRENT_TIMESTAMP,
                    payment_proof, payment_proof_mime, payment_proof_filename,
                    consultation_fee, payment_amount, payment_status,
-                   payment_rejection_reason, payment_verified_by, payment_verified_at
+                   payment_rejection_reason, payment_verified_by, payment_verified_at,
+                   $3
             FROM appointments
             WHERE id = $1
             ON CONFLICT (source_appointment_id) WHERE source_appointment_id IS NOT NULL DO NOTHING
             RETURNING *
             `,
-            [id, status]
+            [id, status, declineReason || null]
         );
 
         if (archivedRes.rows.length === 0) {
@@ -465,17 +568,19 @@ export async function createAppointment({ doctorId, patientId, date, slot, notes
         const startTime = `${date} ${slot}:00`;
         const endTime = `${date} ${slotEnd}:00`;
 
-        // 5. Check for overlapping appointments
+        // 5. Check for overlapping appointments.
+        // Only an approved (or already running) appointment holds the slot, so
+        // another pending request for the same time is not a conflict yet.
         const conflictCheck = await client.query(
             `
             SELECT id 
             FROM appointments
             WHERE doctor_id = $1
-              AND status NOT IN ('cancelled', 'declined', 'no_show')
+              AND status::text = ANY($4::text[])
               AND start_time < $3::timestamp 
               AND end_time > $2::timestamp
             `,
-            [doctorId, startTime, endTime]
+            [doctorId, startTime, endTime, SLOT_HOLDING_STATUSES]
         );
 
         if (conflictCheck.rows.length > 0) {

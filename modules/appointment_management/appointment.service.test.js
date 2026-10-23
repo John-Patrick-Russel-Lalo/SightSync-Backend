@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import pool from "../../shared/config/db.js";
-import { getAvailableSlots, createAppointment, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, approveAppointment, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
 
 // Mock the db module
 vi.mock("../../shared/config/db.js", () => {
@@ -79,6 +79,29 @@ describe("Appointment Service", () => {
 
       const slots = await getAvailableSlots(1, "2026-09-01");
       expect(slots).toEqual(["09:00", "09:30"]);
+    });
+
+    it("should only treat approved appointments as holding a slot, never pending requests", async () => {
+      pool.query
+        .mockResolvedValueOnce({ rows: [{ slot_duration_minutes: 30 }] }) // Doctor Profile
+        .mockResolvedValueOnce({
+          rows: [{ start_time: "09:00", end_time: "10:00", is_unavailable: false }],
+        }) // Override shift 09:00 - 10:00
+        .mockResolvedValueOnce({
+          rows: [{ start_time: "09:30", end_time: "10:00" }],
+        }); // Booked (approved) appointment
+
+      const slots = await getAvailableSlots(1, "2026-09-01");
+
+      // The booked query must filter on the statuses that actually hold a slot
+      // and must not treat a pending request as taken.
+      const bookedCall = pool.query.mock.calls[2];
+      expect(bookedCall[0]).toContain("status::text = ANY($3::text[])");
+      expect(bookedCall[0]).not.toContain("'cancelled'");
+      expect(bookedCall[1]).toEqual([1, "2026-09-01", ["scheduled", "in_consultation"]]);
+
+      // 09:30 - 10:00 is approved, so only 09:00 is left.
+      expect(slots).toEqual(["09:00"]);
     });
   });
 
@@ -165,6 +188,44 @@ describe("Appointment Service", () => {
       expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     });
 
+    it("should not treat a pending request as a conflict when booking the same slot", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ slot_duration_minutes: 30 }] }) // Doctor profile
+        .mockResolvedValueOnce({ rows: [] }) // Override query
+        .mockResolvedValueOnce({
+          rows: [{ start_time: "09:00", end_time: "12:00" }],
+        }) // Regular schedule
+        .mockResolvedValueOnce({ rows: [] }) // Conflict check passes (no approved appointment)
+        .mockResolvedValueOnce({
+          rows: [{ id: 11, status: "pending" }],
+        }); // INSERT returning row
+
+      const result = await createAppointment({
+        doctorId: 1,
+        patientId: 2,
+        date: "2026-09-01",
+        slot: "09:00",
+      });
+
+      // The conflict check only counts approved (or running) appointments, so a
+      // pending request for the same slot does not block a new request.
+      const conflictCall = mockClient.query.mock.calls.find((call) =>
+        String(call[0]).includes("SELECT id")
+      );
+      expect(conflictCall[0]).toContain("status::text = ANY($4::text[])");
+      expect(conflictCall[1]).toEqual([
+        1,
+        "2026-09-01 09:00:00",
+        "2026-09-01 09:30:00",
+        ["scheduled", "in_consultation"],
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.statusCode).toBe(201);
+      expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+    });
+
     it("should successfully create appointment and commit transaction", async () => {
       const mockCreatedAppt = {
         id: 10,
@@ -217,6 +278,107 @@ describe("Appointment Service", () => {
           slot: "09:00",
         })
       ).rejects.toThrow("Database connection failure");
+
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+  });
+
+  describe("approveAppointment", () => {
+    let mockClient;
+
+    beforeEach(() => {
+      mockClient = {
+        query: vi.fn(),
+        release: vi.fn(),
+      };
+      pool.connect.mockResolvedValue(mockClient);
+    });
+
+    it("should approve the request and commit when the slot is still free", async () => {
+      const mockApproved = {
+        id: 7,
+        doctor_id: 1,
+        patient_id: 2,
+        start_time: "2026-09-01 09:00:00",
+        end_time: "2026-09-01 09:30:00",
+        status: "scheduled",
+      };
+
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 7,
+              doctor_id: 1,
+              start_time: "2026-09-01 09:00:00",
+              end_time: "2026-09-01 09:30:00",
+            },
+          ],
+        }) // Appointment to approve
+        .mockResolvedValueOnce({ rows: [] }) // Doctor profile lock
+        .mockResolvedValueOnce({ rows: [] }) // Conflict check (no conflict)
+        .mockResolvedValueOnce({ rows: [mockApproved] }) // UPDATE
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const result = await approveAppointment(7);
+
+      expect(result).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { ...mockApproved, has_payment_proof: false },
+      });
+      expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it("should return 409 when the slot was already taken while the request was pending", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 7,
+              doctor_id: 1,
+              start_time: "2026-09-01 09:00:00",
+              end_time: "2026-09-01 09:30:00",
+            },
+          ],
+        }) // Appointment to approve
+        .mockResolvedValueOnce({ rows: [] }) // Doctor profile lock
+        .mockResolvedValueOnce({ rows: [{ id: 8 }] }); // Conflict check finds an approved appointment
+
+      const result = await approveAppointment(7);
+
+      expect(result.success).toBe(false);
+      expect(result.statusCode).toBe(409);
+      expect(result.message).toContain("already been taken");
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
+    });
+
+    it("should return 404 when the appointment does not exist", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }); // No appointment
+
+      const result = await approveAppointment(999);
+
+      expect(result).toEqual({
+        success: false,
+        statusCode: 404,
+        message: "Appointment not found.",
+      });
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+    });
+
+    it("should rollback and release the client when the query throws", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockRejectedValueOnce(new Error("Database connection failure"));
+
+      await expect(approveAppointment(7)).rejects.toThrow("Database connection failure");
 
       expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
       expect(mockClient.release).toHaveBeenCalled();

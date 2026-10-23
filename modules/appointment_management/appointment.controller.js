@@ -1,4 +1,4 @@
-import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
+import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, approveAppointment, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
 import { sendNotification } from "../notification/notification.service.js";
 import { getUsersByRole } from "../users/users.model.js";
 import { broadcastDoctorStatusChanges } from "../doctor_management/doctorStatus.service.js";
@@ -320,11 +320,16 @@ const ARCHIVED_STATUS_VALUES = ['declined', 'no_show', 'cancelled', 'completed']
 export async function handleUpdateAppointmentStatus(req, res) {
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, reason } = req.body;
 
         if (!status || !['scheduled', 'declined', 'cancelled', 'completed', 'no_show', 'in_consultation'].includes(status)) {
             return res.status(400).json({ error: "Invalid status provided." });
         }
+
+        // Only the admin decline/cancel path carries a patient-facing note.
+        const declineReason = status === 'declined' || status === 'cancelled'
+            ? (typeof reason === 'string' && reason.trim() ? reason.trim() : null)
+            : null;
 
         const appointment = await getAppointmentById(id);
         if (!appointment) {
@@ -370,13 +375,23 @@ export async function handleUpdateAppointmentStatus(req, res) {
         // in consultation) remain in the appointments table.
         let updatedAppointment;
         if (ARCHIVED_STATUS_VALUES.includes(status)) {
-            const archivedResult = await archiveAppointment(id, status);
+            const archivedResult = await archiveAppointment(id, status, declineReason);
             if (!archivedResult.success) {
                 return res.status(archivedResult.statusCode).json({ error: archivedResult.message });
             }
             updatedAppointment = archivedResult.data;
+        } else if (status === 'scheduled') {
+            // Approving is what actually takes the time slot, so the slot is
+            // checked for conflicts again here. A request that was still
+            // pending did not hold the slot, so another request for the same
+            // time may already have been approved in the meantime.
+            const approvedResult = await approveAppointment(id);
+            if (!approvedResult.success) {
+                return res.status(approvedResult.statusCode).json({ error: approvedResult.message });
+            }
+            updatedAppointment = approvedResult.data;
         } else {
-            updatedAppointment = await updateAppointmentStatus(id, status);
+            updatedAppointment = await updateAppointmentStatus(id, status, declineReason);
         }
 
         // The transition can flip the doctor between Available and In
@@ -398,8 +413,9 @@ export async function handleUpdateAppointmentStatus(req, res) {
                 await sendNotification(appointment.patient_id, "Appointment Approved", `Your appointment request for ${startTime} has been approved.`);
                 await sendNotification(appointment.doctor_id, "Appointment Approved", `An appointment with patient ID: ${appointment.patient_id} for ${startTime} has been approved and scheduled.`);
             } else if (status === 'declined' || status === 'cancelled') {
-                await sendNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${startTime} has been declined by the administrator.`);
-                await sendNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${startTime} has been declined.`);
+                const reasonNote = declineReason ? ` Reason: ${declineReason}` : "";
+                await sendNotification(appointment.patient_id, "Appointment Declined", `Your appointment request for ${startTime} has been declined by the administrator.${reasonNote}`);
+                await sendNotification(appointment.doctor_id, "Appointment Declined", `The appointment request for patient ID: ${appointment.patient_id} at ${startTime} has been declined.${reasonNote}`);
             } else if (status === 'no_show') {
                 await sendNotification(appointment.patient_id, "Appointment No-Show", `Your appointment for ${startTime} was marked as a no-show.`);
                 await sendNotification(appointment.doctor_id, "Appointment No-Show", `The appointment for patient ID: ${appointment.patient_id} at ${startTime} was marked as a no-show.`);
