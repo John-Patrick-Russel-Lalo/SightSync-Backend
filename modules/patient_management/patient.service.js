@@ -4,7 +4,12 @@ export const phoneNumberValidator = async (req, res) => {
   try {
     
     const { phoneNumber } = req.body;
-    console.log(phoneNumber)
+
+    // Only validate when a phone number is actually part of the payload.
+    // Partial updates (e.g. a doctor saving an examination record) omit it.
+    if (phoneNumber === undefined || phoneNumber === null) {
+      return true;
+    }
 
     if (!phoneNumber || phoneNumber.length < 7 || phoneNumber.length > 15) {
       return res.status(400).json({
@@ -21,8 +26,8 @@ export const phoneNumberValidator = async (req, res) => {
         message: "Invalid phone number",
       });
     }
-    
-    
+
+    return true;
   } catch (error) {
     return res.status(500).json({
       success: false,

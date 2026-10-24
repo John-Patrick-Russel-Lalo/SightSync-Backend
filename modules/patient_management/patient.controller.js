@@ -261,7 +261,8 @@ export async function updateMyPatientProfile(req, res, next) {
         const isAdmin = req.user.role === "admin";
         console.log(isAdmin)
 
-        phoneNumberValidator(req, res);
+        await phoneNumberValidator(req, res);
+        if (res.headersSent) return;
 
         const updatedProfile = await PatientModel.updatePatientProfileByUser(
             userId,
