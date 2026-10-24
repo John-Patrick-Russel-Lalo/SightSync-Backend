@@ -5,7 +5,7 @@ import { getAllUserController, getUserByIdController, deleteUser, updateUser } f
 
 const router = express.Router();
 
-router.get("/", requireAuth, requireRole("admin"), getAllUserController);
+router.get("/", requireAuth, requireRole("admin", "doctor"), getAllUserController);
 
 router.get("/:id", requireAuth, requireRole("admin"), getUserByIdController);
 

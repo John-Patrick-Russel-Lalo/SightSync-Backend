@@ -18,7 +18,14 @@ export async function getPatientProfileByUserId(userId) {
             p.emergency_contact_name,
             p.emergency_contact_phone,
             p.profile_edit_count,
-            p.updated_at
+            p.updated_at,
+            p.case_history,
+            p.chief_complaint,
+            p.objective_findings,
+            p.pupillary_distance,
+            p.unaided_visual_acuity,
+            p.best_corrected_visual_acuity,
+            p.prescription_rx
         FROM users u
         INNER JOIN patient_profiles p ON u.id = p.user_id
         WHERE u.id = $1
@@ -265,7 +272,15 @@ export async function updatePatientProfile(userId, profileData) {
         phoneNumber,
         bloodType,
         emergencyContactName,
-        emergencyContactPhone
+        emergencyContactPhone,
+        case_history,
+        chief_complaint,
+        objective_findings,
+        pupillary_distance,
+        unaided_visual_acuity,
+        best_corrected_visual_acuity,
+        prescription_rx,
+        rx
     } = profileData;
 
     const client = await pool.connect();
@@ -284,6 +299,13 @@ export async function updatePatientProfile(userId, profileData) {
                 blood_type = COALESCE($4, blood_type),
                 emergency_contact_name = COALESCE($5, emergency_contact_name),
                 emergency_contact_phone = COALESCE($6, emergency_contact_phone),
+                case_history = COALESCE($8, case_history),
+                chief_complaint = COALESCE($9, chief_complaint),
+                objective_findings = COALESCE($10, objective_findings),
+                pupillary_distance = COALESCE($11, pupillary_distance),
+                unaided_visual_acuity = COALESCE($12, unaided_visual_acuity),
+                best_corrected_visual_acuity = COALESCE($13, best_corrected_visual_acuity),
+                prescription_rx = COALESCE($14, prescription_rx),
                 updated_at = CURRENT_TIMESTAMP
             WHERE user_id = $7
             RETURNING *
@@ -295,7 +317,14 @@ export async function updatePatientProfile(userId, profileData) {
                 bloodType || null,
                 emergencyContactName || null,
                 emergencyContactPhone || null,
-                userId
+                userId,
+                case_history || null,
+                chief_complaint || null,
+                objective_findings || null,
+                pupillary_distance || null,
+                unaided_visual_acuity || null,
+                best_corrected_visual_acuity || null,
+                prescription_rx || rx || null
             ]
         );
 
@@ -362,7 +391,14 @@ export async function getPatientReport(patientId) {
                 p.blood_type,
                 p.emergency_contact_name,
                 p.emergency_contact_phone,
-                p.updated_at AS profile_updated_at
+                p.updated_at AS profile_updated_at,
+                p.case_history,
+                p.chief_complaint,
+                p.objective_findings,
+                p.pupillary_distance,
+                p.unaided_visual_acuity,
+                p.best_corrected_visual_acuity,
+                p.prescription_rx
             FROM users u
             LEFT JOIN patient_profiles p ON u.id = p.user_id
             WHERE u.id = $1 AND u.role = 'patient'
