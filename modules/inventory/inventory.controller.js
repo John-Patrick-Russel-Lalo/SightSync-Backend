@@ -11,6 +11,8 @@ import {
   updateLens,
   deleteLens,
   getAllInventory,
+  getInventorySummary,
+  getInventoryBrands,
   getInventoryById,
   getLowStockInventory,
   createInventoryItem,
@@ -21,6 +23,20 @@ import {
 
 const FRAME_CATEGORIES = ["frame", "lens", "accessory"];
 const FRAME_GENDERS = ["unisex", "men", "women", "kids"];
+
+const MAX_LIMIT = 500;
+
+function readPagination(query) {
+  const rawLimit = parseInt(query.limit, 10);
+  const rawOffset = parseInt(query.offset, 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, MAX_LIMIT) : 50;
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+  return { limit, offset };
+}
+
+function readSearch(query) {
+  return typeof query.search === "string" ? query.search.trim() : "";
+}
 
 function isInvalidPositiveNumber(value, allowZero = true) {
   if (value === undefined || value === null || value === "") return false;
@@ -35,12 +51,12 @@ function isInvalidPositiveNumber(value, allowZero = true) {
 
 export async function handleGetAllFrames(req, res) {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = readPagination(req.query);
+    const search = readSearch(req.query);
 
-    const frames = await getAllFrames(limit, offset);
+    const { rows, total } = await getAllFrames({ limit, offset, search });
 
-    res.json({ data: frames, count: frames.length, limit, offset });
+    res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
     console.error("Error fetching all frames:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -141,12 +157,12 @@ export async function handleDeleteFrame(req, res) {
 
 export async function handleGetAllLenses(req, res) {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = readPagination(req.query);
+    const search = readSearch(req.query);
 
-    const lenses = await getAllLenses(limit, offset);
+    const { rows, total } = await getAllLenses({ limit, offset, search });
 
-    res.json({ data: lenses, count: lenses.length, limit, offset });
+    res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
     console.error("Error fetching all lenses:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -233,23 +249,48 @@ export async function handleDeleteLens(req, res) {
 
 export async function handleGetAllInventory(req, res) {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = readPagination(req.query);
+    const search = readSearch(req.query);
+    const category = typeof req.query.category === "string" ? req.query.category : "all";
+    const brand = typeof req.query.brand === "string" ? req.query.brand.trim() : "";
 
-    const items = await getAllInventory(limit, offset);
+    const { rows, total } = await getAllInventory({ limit, offset, search, category, brand });
 
-    res.json({ data: items, count: items.length, limit, offset });
+    res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
     console.error("Error fetching inventory:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 }
 
+export async function handleGetInventorySummary(_req, res) {
+  try {
+    const summary = await getInventorySummary();
+    res.json({ data: summary });
+  } catch (error) {
+    console.error("Error fetching inventory summary:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+}
+
+export async function handleGetInventoryBrands(_req, res) {
+  try {
+    const brands = await getInventoryBrands();
+    res.json({ data: brands });
+  } catch (error) {
+    console.error("Error fetching inventory brands:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+}
+
 export async function handleGetLowStock(req, res) {
   try {
-    const items = await getLowStockInventory();
+    const { limit, offset } = readPagination(req.query);
+    const search = readSearch(req.query);
 
-    res.json({ data: items, count: items.length });
+    const { rows, total } = await getLowStockInventory({ limit, offset, search });
+
+    res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
     console.error("Error fetching low stock inventory:", error);
     res.status(500).json({ error: "Internal Server Error" });
