@@ -14,6 +14,8 @@ import {
   handleUpdateLens,
   handleDeleteLens,
   handleGetAllInventory,
+  handleGetInventorySummary,
+  handleGetInventoryBrands,
   handleGetInventoryById,
   handleGetLowStock,
   handleCreateInventoryItem,
@@ -43,6 +45,8 @@ router.delete("/lenses/:id", requireAuth, requireRole("admin"), handleDeleteLens
 
 // Inventory
 router.get("/low-stock", requireAuth, requireRole("admin"), handleGetLowStock);
+router.get("/summary", requireAuth, requireRole("admin"), handleGetInventorySummary);
+router.get("/brands", requireAuth, requireRole("admin"), handleGetInventoryBrands);
 router.get("/", requireAuth, requireRole("admin"), handleGetAllInventory);
 router.post("/", requireAuth, requireRole("admin"), handleCreateInventoryItem);
 

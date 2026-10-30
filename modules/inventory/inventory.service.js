@@ -5,18 +5,36 @@ import pool from "../../shared/config/db.js";
 // Frames
 // ---------------------------------------------------------------------------
 
-export async function getAllFrames(limit = 50, offset = 0) {
+export async function getAllFrames({ limit = 50, offset = 0, search = "" } = {}) {
+  const params = [];
+  let where = "";
+
+  if (search) {
+    params.push(`%${search}%`);
+    where = `WHERE brand ILIKE $1
+      OR model_number ILIKE $1
+      OR color ILIKE $1
+      OR frame_type ILIKE $1
+      OR material ILIKE $1`;
+  }
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM frames ${where}`,
+    params
+  );
+
   const result = await pool.query(
     `
     SELECT *
     FROM frames
+    ${where}
     ORDER BY created_at DESC
-    LIMIT $1 OFFSET $2
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
-    [limit, offset]
+    [...params, limit, offset]
   );
 
-  return result.rows;
+  return { rows: result.rows, total: countResult.rows[0]?.total || 0 };
 }
 
 export async function getFrameById(id) {
@@ -141,18 +159,35 @@ export async function deleteFrame(id) {
 // Lenses
 // ---------------------------------------------------------------------------
 
-export async function getAllLenses(limit = 50, offset = 0) {
+export async function getAllLenses({ limit = 50, offset = 0, search = "" } = {}) {
+  const params = [];
+  let where = "";
+
+  if (search) {
+    params.push(`%${search}%`);
+    where = `WHERE brand ILIKE $1
+      OR lens_type ILIKE $1
+      OR material ILIKE $1
+      OR coating ILIKE $1`;
+  }
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM lenses ${where}`,
+    params
+  );
+
   const result = await pool.query(
     `
     SELECT *
     FROM lenses
+    ${where}
     ORDER BY created_at DESC
-    LIMIT $1 OFFSET $2
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
-    [limit, offset]
+    [...params, limit, offset]
   );
 
-  return result.rows;
+  return { rows: result.rows, total: countResult.rows[0]?.total || 0 };
 }
 
 export async function getLensById(id) {
@@ -277,48 +312,143 @@ export async function deleteLens(id) {
 // Inventory
 // ---------------------------------------------------------------------------
 
-export async function getAllInventory(limit = 50, offset = 0) {
+const INVENTORY_FROM = `
+  FROM inventory i
+  LEFT JOIN frames f ON i.frame_id = f.id
+  LEFT JOIN lenses l ON i.lens_id = l.id
+`;
+
+const INVENTORY_SELECT = `
+  SELECT
+    i.id,
+    i.sku,
+    i.category,
+    i.quantity,
+    i.reorder_level,
+    i.unit_cost,
+    i.selling_price,
+    i.is_active,
+    i.created_at,
+    i.updated_at,
+    CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
+      'id', f.id,
+      'brand', f.brand,
+      'model_number', f.model_number,
+      'color', f.color,
+      'frame_type', f.frame_type,
+      'material', f.material,
+      'gender', f.gender
+    ) ELSE NULL END AS frame,
+    CASE WHEN i.lens_id IS NOT NULL THEN jsonb_build_object(
+      'id', l.id,
+      'brand', l.brand,
+      'lens_type', l.lens_type,
+      'material', l.material,
+      'index_value', l.index_value,
+      'coating', l.coating
+    ) ELSE NULL END AS lens
+  ${INVENTORY_FROM}
+`;
+
+function buildInventoryFilters({ search = "", category = "all", brand = "" } = {}) {
+  const conditions = ["i.is_active = TRUE"];
+  const params = [];
+
+  if (category && category !== "all") {
+    params.push(category);
+    conditions.push(`i.category = $${params.length}`);
+  }
+
+  if (brand) {
+    params.push(brand);
+    conditions.push(`LOWER(COALESCE(f.brand, l.brand, '')) = LOWER($${params.length})`);
+  }
+
+  if (search) {
+    params.push(`%${search}%`);
+    const term = `$${params.length}`;
+    conditions.push(`(
+      i.sku ILIKE ${term}
+      OR i.category::text ILIKE ${term}
+      OR f.brand ILIKE ${term}
+      OR f.model_number ILIKE ${term}
+      OR l.brand ILIKE ${term}
+      OR l.lens_type ILIKE ${term}
+    )`);
+  }
+
+  return { where: conditions.join(" AND "), params };
+}
+
+export async function getAllInventory({
+  limit = 50,
+  offset = 0,
+  search = "",
+  category = "all",
+  brand = "",
+} = {}) {
+  const { where, params } = buildInventoryFilters({ search, category, brand });
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total ${INVENTORY_FROM} WHERE ${where}`,
+    params
+  );
+
+  const result = await pool.query(
+    `
+    ${INVENTORY_SELECT}
+    WHERE ${where}
+    ORDER BY i.created_at DESC
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `,
+    [...params, limit, offset]
+  );
+
+  return { rows: result.rows, total: countResult.rows[0]?.total || 0 };
+}
+
+export async function getInventorySummary() {
   const result = await pool.query(
     `
     SELECT
-      i.id,
-      i.sku,
-      i.category,
-      i.quantity,
-      i.reorder_level,
-      i.unit_cost,
-      i.selling_price,
-      i.is_active,
-      i.created_at,
-      i.updated_at,
-      CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
-        'id', f.id,
-        'brand', f.brand,
-        'model_number', f.model_number,
-        'color', f.color,
-        'frame_type', f.frame_type,
-        'material', f.material,
-        'gender', f.gender
-      ) ELSE NULL END AS frame,
-      CASE WHEN i.lens_id IS NOT NULL THEN jsonb_build_object(
-        'id', l.id,
-        'brand', l.brand,
-        'lens_type', l.lens_type,
-        'material', l.material,
-        'index_value', l.index_value,
-        'coating', l.coating
-      ) ELSE NULL END AS lens
-    FROM inventory i
-    LEFT JOIN frames f ON i.frame_id = f.id
-    LEFT JOIN lenses l ON i.lens_id = l.id
-    WHERE i.is_active = TRUE
-    ORDER BY i.created_at DESC
-    LIMIT $1 OFFSET $2
-    `,
-    [limit, offset]
+      COUNT(*)::int AS total_skus,
+      COUNT(*) FILTER (WHERE quantity <= reorder_level)::int AS low_stock,
+      COALESCE(SUM(quantity * unit_cost), 0) AS stock_value,
+      COALESCE(SUM(quantity * selling_price), 0) AS retail_value
+    FROM inventory
+    WHERE is_active = TRUE
+    `
   );
 
-  return result.rows;
+  const row = result.rows[0] || {};
+
+  return {
+    totalSkus: Number(row.total_skus) || 0,
+    lowStock: Number(row.low_stock) || 0,
+    stockValue: Number(row.stock_value) || 0,
+    retailValue: Number(row.retail_value) || 0,
+  };
+}
+
+export async function getInventoryBrands() {
+  const result = await pool.query(
+    `
+    SELECT DISTINCT brand FROM (
+      SELECT f.brand
+      FROM inventory i
+      JOIN frames f ON i.frame_id = f.id
+      WHERE i.is_active = TRUE AND f.brand IS NOT NULL AND f.brand <> ''
+      UNION
+      SELECT l.brand
+      FROM inventory i
+      JOIN lenses l ON i.lens_id = l.id
+      WHERE i.is_active = TRUE AND l.brand IS NOT NULL AND l.brand <> ''
+    ) brands
+    ORDER BY brand ASC
+    `
+  );
+
+  return result.rows.map((row) => row.brand);
 }
 
 export async function getInventoryById(id) {
@@ -363,44 +493,41 @@ export async function getInventoryById(id) {
   return result.rows[0] || null;
 }
 
-export async function getLowStockInventory() {
-  const result = await pool.query(
-    `
-    SELECT
-      i.id,
-      i.sku,
-      i.category,
-      i.quantity,
-      i.reorder_level,
-      i.unit_cost,
-      i.selling_price,
-      i.is_active,
-      i.created_at,
-      i.updated_at,
-      CASE WHEN i.frame_id IS NOT NULL THEN jsonb_build_object(
-        'id', f.id,
-        'brand', f.brand,
-        'model_number', f.model_number,
-        'color', f.color,
-        'material', f.material
-      ) ELSE NULL END AS frame,
-      CASE WHEN i.lens_id IS NOT NULL THEN jsonb_build_object(
-        'id', l.id,
-        'brand', l.brand,
-        'lens_type', l.lens_type,
-        'material', l.material,
-        'coating', l.coating
-      ) ELSE NULL END AS lens
-    FROM inventory i
-    LEFT JOIN frames f ON i.frame_id = f.id
-    LEFT JOIN lenses l ON i.lens_id = l.id
-    WHERE i.quantity <= i.reorder_level
-      AND i.is_active = TRUE
-    ORDER BY (i.quantity - i.reorder_level) ASC
-    `
+export async function getLowStockInventory({ limit = 50, offset = 0, search = "" } = {}) {
+  const conditions = ["i.quantity <= i.reorder_level", "i.is_active = TRUE"];
+  const params = [];
+
+  if (search) {
+    params.push(`%${search}%`);
+    const term = `$${params.length}`;
+    conditions.push(`(
+      i.sku ILIKE ${term}
+      OR i.category::text ILIKE ${term}
+      OR f.brand ILIKE ${term}
+      OR f.model_number ILIKE ${term}
+      OR l.brand ILIKE ${term}
+      OR l.lens_type ILIKE ${term}
+    )`);
+  }
+
+  const where = conditions.join(" AND ");
+
+  const countResult = await pool.query(
+    `SELECT COUNT(*)::int AS total ${INVENTORY_FROM} WHERE ${where}`,
+    params
   );
 
-  return result.rows;
+  const result = await pool.query(
+    `
+    ${INVENTORY_SELECT}
+    WHERE ${where}
+    ORDER BY (i.quantity - i.reorder_level) ASC
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `,
+    [...params, limit, offset]
+  );
+
+  return { rows: result.rows, total: countResult.rows[0]?.total || 0 };
 }
 
 export async function createInventoryItem(inventoryData) {

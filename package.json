@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "import:frames": "node scripts/importBalayanFrames.js"
   },
   "author": "",
   "license": "ISC",
@@ -33,5 +34,8 @@
     "socket.io": "^4.8.4",
     "validator": "^13.15.35",
     "vitest": "^4.1.10"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
   }
 }
