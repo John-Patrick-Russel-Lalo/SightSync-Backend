@@ -38,6 +38,16 @@ function readSearch(query) {
   return typeof query.search === "string" ? query.search.trim() : "";
 }
 
+function readBrand(query) {
+  return typeof query.brand === "string" ? query.brand.trim() : "";
+}
+
+function readStockStatus(query) {
+  return query.stockStatus === "low" || query.stockStatus === "good"
+    ? query.stockStatus
+    : "";
+}
+
 function isInvalidPositiveNumber(value, allowZero = true) {
   if (value === undefined || value === null || value === "") return false;
   const num = Number(value);
@@ -53,8 +63,9 @@ export async function handleGetAllFrames(req, res) {
   try {
     const { limit, offset } = readPagination(req.query);
     const search = readSearch(req.query);
+    const brand = readBrand(req.query);
 
-    const { rows, total } = await getAllFrames({ limit, offset, search });
+    const { rows, total } = await getAllFrames({ limit, offset, search, brand });
 
     res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
@@ -159,8 +170,9 @@ export async function handleGetAllLenses(req, res) {
   try {
     const { limit, offset } = readPagination(req.query);
     const search = readSearch(req.query);
+    const brand = readBrand(req.query);
 
-    const { rows, total } = await getAllLenses({ limit, offset, search });
+    const { rows, total } = await getAllLenses({ limit, offset, search, brand });
 
     res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
@@ -252,9 +264,17 @@ export async function handleGetAllInventory(req, res) {
     const { limit, offset } = readPagination(req.query);
     const search = readSearch(req.query);
     const category = typeof req.query.category === "string" ? req.query.category : "all";
-    const brand = typeof req.query.brand === "string" ? req.query.brand.trim() : "";
+    const brand = readBrand(req.query);
+    const stockStatus = readStockStatus(req.query);
 
-    const { rows, total } = await getAllInventory({ limit, offset, search, category, brand });
+    const { rows, total } = await getAllInventory({
+      limit,
+      offset,
+      search,
+      category,
+      brand,
+      stockStatus,
+    });
 
     res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {
@@ -273,9 +293,10 @@ export async function handleGetInventorySummary(_req, res) {
   }
 }
 
-export async function handleGetInventoryBrands(_req, res) {
+export async function handleGetInventoryBrands(req, res) {
   try {
-    const brands = await getInventoryBrands();
+    const type = ["frame", "lens"].includes(req.query.type) ? req.query.type : "";
+    const brands = await getInventoryBrands({ type });
     res.json({ data: brands });
   } catch (error) {
     console.error("Error fetching inventory brands:", error);
@@ -287,8 +308,9 @@ export async function handleGetLowStock(req, res) {
   try {
     const { limit, offset } = readPagination(req.query);
     const search = readSearch(req.query);
+    const brand = readBrand(req.query);
 
-    const { rows, total } = await getLowStockInventory({ limit, offset, search });
+    const { rows, total } = await getLowStockInventory({ limit, offset, search, brand });
 
     res.json({ data: rows, total, count: rows.length, limit, offset });
   } catch (error) {

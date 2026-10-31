@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "test": "vitest run",
-    "import:frames": "node scripts/importBalayanFrames.js"
+    "import:frames": "node scripts/importBalayanFrames.js",
+    "import:inventory": "node scripts/importBalayanFrames.js"
   },
   "author": "",
   "license": "ISC",
