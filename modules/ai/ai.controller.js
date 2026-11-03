@@ -52,7 +52,6 @@ function buildAnalyticsSummaryPrompt(body) {
         "Revenue and sales:",
         `- Total revenue: PHP ${num(sales.revenue)} (change vs previous period: ${delta(sales.revenueDelta)})`,
         `- Completed transactions: ${num(sales.transactions)} (change: ${delta(sales.transactionsDelta)})`,
-        `- Average ticket: PHP ${num(sales.averageTicket)}`,
         `- Voided or refunded sales: ${num(sales.voided)} (${num(sales.voidRate)}% of sales in period)`,
         `- Discounts given: PHP ${num(sales.discounts)}`,
         `- Sales by payment method: ${methodEntries || "none recorded"}`,
