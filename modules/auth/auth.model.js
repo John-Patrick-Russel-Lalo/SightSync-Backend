@@ -116,6 +116,7 @@
 
 
 import pool from "../../shared/config/db.js";
+import { formatAccountName } from "../../shared/utils/nameFormat.js";
 import validator from "validator";
 import bcrypt from "bcrypt";
 
@@ -185,8 +186,8 @@ export async function createUserByProvider(user) {
         user.provider,
         user.providerId,
         user.email,
-        user.username,
-        user.displayName,
+        formatAccountName(user.username),
+        formatAccountName(user.displayName),
         "patient",
         user.avatar,
       ]
@@ -217,6 +218,7 @@ export async function createUser(email, username, password) {
 
   const normalizedEmail = String(email ?? "").trim().toLowerCase();
   const normalizedPassword = String(password ?? "").trim();
+  const normalizedUsername = formatAccountName(username);
 
   try {
     await client.query("BEGIN");
@@ -228,7 +230,7 @@ export async function createUser(email, username, password) {
       VALUES ($1, $2, $3, $4, $5) 
       RETURNING *
       `,
-      ["local", normalizedEmail, username, hashedPassword, "patient"]
+      ["local", normalizedEmail, normalizedUsername, hashedPassword, "patient"]
     );
     const newUser = userResult.rows[0];
 

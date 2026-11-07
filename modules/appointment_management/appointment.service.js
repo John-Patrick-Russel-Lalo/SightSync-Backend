@@ -146,7 +146,14 @@ export async function getAvailableSlots(doctorId, selectedDate) {
 
 export async function getAllAppointments() {
     const result = await pool.query(
-        `SELECT * FROM appointments`
+        `
+        SELECT a.*,
+               COALESCE(d.display_name, d.username) AS doctor_name,
+               COALESCE(p.display_name, p.username) AS patient_name
+        FROM appointments a
+        LEFT JOIN users d ON d.id = a.doctor_id
+        LEFT JOIN users p ON p.id = a.patient_id
+        `
     );
     return toAppointmentRows(result.rows);
 }
@@ -571,24 +578,38 @@ export async function createAppointment({ doctorId, patientId, date, slot, notes
         // 5. Check for overlapping appointments.
         // Only an approved (or already running) appointment holds the slot, so
         // another pending request for the same time is not a conflict yet.
+        // However, the same patient must not create a second request for a
+        // slot they are already waiting on.
         const conflictCheck = await client.query(
             `
-            SELECT id 
+            SELECT id, patient_id, status::text AS status
             FROM appointments
             WHERE doctor_id = $1
-              AND status::text = ANY($4::text[])
               AND start_time < $3::timestamp 
               AND end_time > $2::timestamp
+              AND (
+                status::text = ANY($4::text[])
+                OR (patient_id = $5 AND status::text = 'pending')
+              )
             `,
-            [doctorId, startTime, endTime, SLOT_HOLDING_STATUSES]
+            [doctorId, startTime, endTime, SLOT_HOLDING_STATUSES, patientId]
         );
 
         if (conflictCheck.rows.length > 0) {
             await client.query("ROLLBACK");
+
+            const duplicateRequest = conflictCheck.rows.some(
+                (row) =>
+                    row.status === "pending" &&
+                    String(row.patient_id) === String(patientId)
+            );
+
             return {
                 success: false,
                 statusCode: 409,
-                message: "This slot is no longer available. Please select another time."
+                message: duplicateRequest
+                    ? "This account already has a pending request for this time slot."
+                    : "This slot is no longer available. Please select another time."
             };
         }
 
