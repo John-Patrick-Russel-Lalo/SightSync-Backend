@@ -1,4 +1,5 @@
 import { createUser, loginUser, findUserByEmail } from "./auth.model.js";
+import { formatAccountName } from "../../shared/utils/nameFormat.js";
 import jwt from "jsonwebtoken";
 
 export async function register(req, res) {
@@ -19,7 +20,7 @@ export async function register(req, res) {
       return res.status(400).json({ message: "Email already exists" });
     }
 
-    const username = `${firstName} ${lastName}`.trim();
+    const username = formatAccountName(`${firstName} ${lastName}`);
 
     const user = await createUser(email, username, password);
 

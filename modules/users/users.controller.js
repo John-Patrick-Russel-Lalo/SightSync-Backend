@@ -1,6 +1,7 @@
 
 import express from "express";
 import { getAllUser, getUserById, deleteUserById, updateUserById } from "./users.model.js";
+import { formatAccountName } from "../../shared/utils/nameFormat.js";
 
 
 
@@ -54,7 +55,13 @@ export async function deleteUser(req, res) {
 export async function updateUser(req, res) {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const updates = { ...req.body };
+
+        for (const field of ["username", "display_name", "name"]) {
+            if (Object.prototype.hasOwnProperty.call(updates, field)) {
+                updates[field] = formatAccountName(updates[field]);
+            }
+        }
 
         if (Object.keys(updates).length === 0) {
             return res.status(400).json({

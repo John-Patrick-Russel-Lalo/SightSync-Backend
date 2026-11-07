@@ -209,21 +209,51 @@ describe("Appointment Service", () => {
       });
 
       // The conflict check only counts approved (or running) appointments, so a
-      // pending request for the same slot does not block a new request.
+      // pending request from another patient for the same slot does not block a
+      // new request.
       const conflictCall = mockClient.query.mock.calls.find((call) =>
-        String(call[0]).includes("SELECT id")
+        String(call[0]).includes("SELECT id, patient_id")
       );
       expect(conflictCall[0]).toContain("status::text = ANY($4::text[])");
+      expect(conflictCall[0]).toContain("patient_id = $5 AND status::text = 'pending'");
       expect(conflictCall[1]).toEqual([
         1,
         "2026-09-01 09:00:00",
         "2026-09-01 09:30:00",
         ["scheduled", "in_consultation"],
+        2,
       ]);
 
       expect(result.success).toBe(true);
       expect(result.statusCode).toBe(201);
       expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+    });
+
+    it("should reject a duplicate pending request from the same patient", async () => {
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ slot_duration_minutes: 30 }] }) // Doctor profile
+        .mockResolvedValueOnce({ rows: [] }) // Override query
+        .mockResolvedValueOnce({
+          rows: [{ start_time: "09:00", end_time: "12:00" }],
+        }) // Regular schedule
+        .mockResolvedValueOnce({
+          rows: [{ id: 11, patient_id: 2, status: "pending" }],
+        }); // Same patient already has a pending request for this slot
+
+      const result = await createAppointment({
+        doctorId: 1,
+        patientId: 2,
+        date: "2026-09-01",
+        slot: "09:00",
+      });
+
+      expect(result).toEqual({
+        success: false,
+        statusCode: 409,
+        message: "This account already has a pending request for this time slot.",
+      });
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     });
 
     it("should successfully create appointment and commit transaction", async () => {
