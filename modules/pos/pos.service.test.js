@@ -405,7 +405,7 @@ describe("POS Service", () => {
       expect(sales).toEqual([
         { id: 1, receipt_number: "RC-20260922-123456", total: 1070 },
       ]);
-      expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("FROM sales"), [50, 0]);
+      expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("FROM sales"), [50, 0, null, null]);
     });
   });
 

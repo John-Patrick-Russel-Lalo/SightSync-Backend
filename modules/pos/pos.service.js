@@ -274,7 +274,7 @@ FROM inventory i
   }
 }
 
-export async function getAllSales(limit = 50, offset = 0) {
+export async function getAllSales(limit = 50, offset = 0, startDate = null, endDate = null) {
   const result = await pool.query(
     `
     SELECT
@@ -297,10 +297,12 @@ export async function getAllSales(limit = 50, offset = 0) {
     FROM sales s
     LEFT JOIN users u ON s.sold_by = u.id
     LEFT JOIN users p ON s.patient_id = p.id
+    WHERE ($3::date IS NULL OR s.created_at >= $3::date)
+      AND ($4::date IS NULL OR s.created_at < $4::date + INTERVAL '1 day')
     ORDER BY s.created_at DESC
     LIMIT $1 OFFSET $2
     `,
-    [limit, offset]
+    [limit, offset, startDate, endDate]
   );
 
   return result.rows;
@@ -442,10 +444,10 @@ export async function getSalesSummary(startDate, endDate) {
       COALESCE(SUM(tax_amount), 0) AS total_taxes
     FROM sales
     WHERE status = 'completed'
-      AND created_at >= $1::date
-      AND created_at < ($2::date + INTERVAL '1 day')
+      AND ($1::date IS NULL OR created_at >= $1::date)
+      AND ($2::date IS NULL OR created_at < ($2::date + INTERVAL '1 day'))
     `,
-    [startDate, endDate]
+    [startDate ?? null, endDate ?? null]
   );
 
   const itemsRes = await pool.query(
@@ -454,10 +456,10 @@ export async function getSalesSummary(startDate, endDate) {
     FROM sale_items si
     INNER JOIN sales s ON si.sale_id = s.id
     WHERE s.status = 'completed'
-      AND s.created_at >= $1::date
-      AND s.created_at < ($2::date + INTERVAL '1 day')
+      AND ($1::date IS NULL OR s.created_at >= $1::date)
+      AND ($2::date IS NULL OR s.created_at < ($2::date + INTERVAL '1 day'))
     `,
-    [startDate, endDate]
+    [startDate ?? null, endDate ?? null]
   );
 
   return {

@@ -1,5 +1,6 @@
 import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmentByDoctorId, getAppointmentByPatientId, updateAppointmentStatus, approveAppointment, getAppointmentById, getAppointmentPaymentProof, updateAppointmentPaymentStatus, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser, createConsultationNote, getConsultationNotesByAppointment, getConsultationNotesByPatient } from "./appointment.service.js";
 import { sendNotification } from "../notification/notification.service.js";
+import { notifyPatientAppointment } from "../notification/appointmentEmail.service.js";
 import { getUsersByRole } from "../users/users.model.js";
 import { broadcastDoctorStatusChanges } from "../doctor_management/doctorStatus.service.js";
 import { APP_TIMEZONE, formatWallClockDateTime, isValidDateString, isValidTimeString, nowWallClock } from "../../shared/utils/dateTime.js";
@@ -118,7 +119,7 @@ export async function handleCreateAppointment(req, res) {
 
         // Send Notifications
         try {
-            await sendNotification(patientId, "Appointment Requested", `Your appointment request for ${date} at ${slot} has been submitted and is pending admin approval.`);
+            await notifyPatientAppointment(patientId, "Appointment Requested", `Your appointment request for ${formatWallClockDateTime(`${date} ${slot}`)} has been submitted and is pending admin approval.`, sendNotification);
             await sendNotification(doctorId, "New Appointment Request", `A new appointment request has been submitted by patient ID: ${patientId} for ${date} at ${slot}.`);
             
             const admins = await getUsersByRole('admin');
@@ -186,7 +187,7 @@ export async function handleCreateAppointmentByPatient(req, res) {
 
         // Send Notifications
         try {
-            await sendNotification(patientId, "Appointment Requested", `Your appointment request for ${date} at ${slot} with your half-payment of PHP ${amountPaid.toFixed(2)} has been submitted and is pending admin review of your payment proof.`);
+            await notifyPatientAppointment(patientId, "Appointment Requested", `Your appointment request for ${formatWallClockDateTime(`${date} ${slot}`)} with your half-payment of PHP ${amountPaid.toFixed(2)} has been submitted and is pending admin review of your payment proof.`, sendNotification);
             await sendNotification(doctorId, "New Appointment Request", `A new appointment request has been submitted by patient ID: ${patientId} for ${date} at ${slot}.`);
 
             const admins = await getUsersByRole('admin');
@@ -431,7 +432,7 @@ export async function handleUpdateAppointmentStatus(req, res) {
             const startTime = formatWallClockDateTime(appointment.start_time);
 
             if (status === 'scheduled') {
-                await sendNotification(appointment.patient_id, "Appointment Approved", `Your appointment request for ${startTime} has been approved.`);
+                await notifyPatientAppointment(appointment.patient_id, "Appointment Approved", `Your appointment request for ${startTime} has been approved.`, sendNotification);
                 await sendNotification(appointment.doctor_id, "Appointment Approved", `An appointment with patient ID: ${appointment.patient_id} for ${startTime} has been approved and scheduled.`);
             } else if (status === 'declined' || status === 'cancelled') {
                 const reasonNote = declineReason ? ` Reason: ${declineReason}` : "";

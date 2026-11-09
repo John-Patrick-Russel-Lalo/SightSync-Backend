@@ -68,7 +68,7 @@ export async function handleGetAllSales(req, res) {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
 
-    const sales = await getAllSales(limit, offset);
+    const sales = await getAllSales(limit, offset, req.query.startDate || null, req.query.endDate || null);
 
     res.json({ data: sales, count: sales.length, limit, offset });
   } catch (error) {
@@ -128,7 +128,7 @@ export async function handleGetSalesSummary(req, res) {
   try {
     const { startDate, endDate } = req.query;
 
-    if (!startDate || !endDate) {
+    if (Boolean(startDate) !== Boolean(endDate)) {
       return res.status(400).json({
         error: "startDate and endDate query parameters (YYYY-MM-DD) are required.",
       });
