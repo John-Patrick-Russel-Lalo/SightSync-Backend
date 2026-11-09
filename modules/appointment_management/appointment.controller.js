@@ -2,7 +2,12 @@ import { getAvailableSlots, createAppointment, getAllAppointments, getAppointmen
 import { sendNotification } from "../notification/notification.service.js";
 import { getUsersByRole } from "../users/users.model.js";
 import { broadcastDoctorStatusChanges } from "../doctor_management/doctorStatus.service.js";
-import { formatWallClockDateTime, isValidDateString, isValidTimeString } from "../../shared/utils/dateTime.js";
+import { APP_TIMEZONE, formatWallClockDateTime, isValidDateString, isValidTimeString, nowWallClock } from "../../shared/utils/dateTime.js";
+import {
+    CONSULTATION_START_EARLY_MINUTES,
+    CONSULTATION_START_LATE_MINUTES,
+    isWithinConsultationStartWindow,
+} from "./consultationTiming.js";
 
 export async function handleGetAvailableSlots(req, res) {
     try {
@@ -337,6 +342,22 @@ export async function handleUpdateAppointmentStatus(req, res) {
         }
 
         const isAdmin = req.user.role === "admin";
+
+        // Starting a consultation is an explicit, live-presence action. Keep it
+        // near the booked slot so a doctor cannot start a later appointment
+        // early and incorrectly appear unavailable for the rest of the day.
+        if (status === 'in_consultation') {
+            const currentTime = nowWallClock(APP_TIMEZONE);
+            if (!isWithinConsultationStartWindow({
+                startTime: appointment.start_time,
+                endTime: appointment.end_time,
+                currentTime,
+            })) {
+                return res.status(409).json({
+                    error: `Consultation can be started only from ${CONSULTATION_START_EARLY_MINUTES} minutes before the scheduled start until ${CONSULTATION_START_LATE_MINUTES} minutes after the scheduled end.`,
+                });
+            }
+        }
 
         if (!isAdmin) {
             // Doctors may only update their own appointments, and only between

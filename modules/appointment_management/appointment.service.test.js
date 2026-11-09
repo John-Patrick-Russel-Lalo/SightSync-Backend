@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import pool from "../../shared/config/db.js";
 import { getAvailableSlots, createAppointment, approveAppointment, archiveAppointment, getArchivedAppointments, getArchivedAppointmentsByUser } from "./appointment.service.js";
 
@@ -17,9 +17,27 @@ vi.mock("../../shared/config/db.js", () => {
 describe("Appointment Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T02:30:00Z"));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("rejects a booking in the past before connecting to the database", async () => {
+    const result = await createAppointment({ doctorId: 1, patientId: 2, date: "2026-09-01", slot: "09:30" });
+    expect(result.statusCode).toBe(400);
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("filters past and current slots on the clinic date", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ slot_duration_minutes: 30 }] })
+      .mockResolvedValueOnce({ rows: [{ start_time: "09:00", end_time: "12:00", is_unavailable: false }] })
+      .mockResolvedValueOnce({ rows: [] });
+    expect(await getAvailableSlots(1, "2026-09-01")).toEqual(["11:00", "11:30"]);
   });
 
   describe("getAvailableSlots", () => {
+    beforeEach(() => vi.setSystemTime(new Date("2026-08-01T00:00:00Z")));
     it("should return empty array if doctor profile does not exist", async () => {
       pool.query.mockResolvedValueOnce({ rows: [] });
 
@@ -109,6 +127,7 @@ describe("Appointment Service", () => {
     let mockClient;
 
     beforeEach(() => {
+      vi.setSystemTime(new Date("2026-08-01T00:00:00Z"));
       mockClient = {
         query: vi.fn(),
         release: vi.fn(),
