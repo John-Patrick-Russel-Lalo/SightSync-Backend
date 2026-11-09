@@ -10,7 +10,7 @@ describe("appointment notifications", () => {
         vi.stubEnv("BREVO_SENDER_EMAIL", "clinic@example.com");
         vi.stubEnv("BREVO_SENDER_NAME", "SightSync");
         pool.query.mockResolvedValue({ rows: [{ email: "patient@example.com" }] });
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ messageId: "test-id" }) }));
     });
 
     afterEach(() => {
@@ -34,7 +34,7 @@ describe("appointment notifications", () => {
     });
 
     it("still sends the web notification when Brevo fails", async () => {
-        fetch.mockResolvedValue({ ok: false, status: 503 });
+        fetch.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
         const web = vi.fn().mockResolvedValue({ id: 1 });
         const log = vi.spyOn(console, "error").mockImplementation(() => {});
         await notifyPatientAppointment(5, "Appointment Requested", "Request received.", web);
