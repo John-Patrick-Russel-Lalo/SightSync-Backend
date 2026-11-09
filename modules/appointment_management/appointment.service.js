@@ -1,5 +1,6 @@
 
 import pool from "../../shared/config/db.js";
+import { nowWallClock } from "../../shared/utils/dateTime.js";
 
 // Helper Functions
 function timeToMinutes(timeStr) {
@@ -46,6 +47,8 @@ function minutesToTime(totalMinutes) {
 export const SLOT_HOLDING_STATUSES = ["scheduled", "in_consultation"];
 
 export async function getAvailableSlots(doctorId, selectedDate) {
+    const currentTime = nowWallClock();
+    if (selectedDate < currentTime.slice(0, 10)) return [];
     // 1. Fetch Doctor Profile for slot duration
     const profileRes = await pool.query(
         `SELECT slot_duration_minutes FROM doctor_profiles WHERE user_id = $1`,
@@ -133,7 +136,7 @@ export async function getAvailableSlots(doctorId, selectedDate) {
                 (b) => currentSlotStart < b.end && currentSlotEnd > b.start
             );
 
-            if (!isBooked) {
+            if (!isBooked && `${selectedDate} ${minutesToTime(currentSlotStart)}:00` > currentTime) {
                 availableSlots.push(minutesToTime(currentSlotStart));
             }
 
@@ -470,6 +473,10 @@ export async function getConsultationNotesByPatient(patientId) {
 }
 
 export async function createAppointment({ doctorId, patientId, date, slot, notes, paymentProof }) {
+    const normalizedSlot = `${String(Number(slot.split(":")[0])).padStart(2, "0")}:${slot.split(":")[1]}`;
+    if (`${date} ${normalizedSlot}:00` <= nowWallClock()) {
+        return { success: false, statusCode: 400, message: "Please select a future appointment time." };
+    }
     const client = await pool.connect();
 
     try {
@@ -574,6 +581,12 @@ export async function createAppointment({ doctorId, patientId, date, slot, notes
         const slotEnd = minutesToTime(reqEndMin);
         const startTime = `${date} ${slot}:00`;
         const endTime = `${date} ${slotEnd}:00`;
+
+        // The slot may have passed while the request waited for the doctor lock.
+        if (`${date} ${normalizedSlot}:00` <= nowWallClock()) {
+            await client.query("ROLLBACK");
+            return { success: false, statusCode: 400, message: "Please select a future appointment time." };
+        }
 
         // 5. Check for overlapping appointments.
         // Only an approved (or already running) appointment holds the slot, so
