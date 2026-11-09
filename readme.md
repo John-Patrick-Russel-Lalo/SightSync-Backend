@@ -121,3 +121,7 @@ Allowed origins are configured in `app.js`:
 - `http://localhost:5500`
 - `http://localhost:5173`
 - `http://localhost:5174`
+# Appointment email notifications
+
+Appointment requests and approvals notify the patient in the web portal and by email through Brevo. Set `BREVO_API_KEY` (or the existing `BREVO_API`), `BREVO_SENDER_EMAIL`, and optionally `BREVO_SENDER_NAME` in the backend environment. The sender email must be registered and verified in Brevo, and the patient account must have an email address. Restart the backend after changing environment variables. Email delivery failures are logged and do not roll back appointments or web notifications; no automatic retry is configured.
+
