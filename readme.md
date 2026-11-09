@@ -125,3 +125,5 @@ Allowed origins are configured in `app.js`:
 
 Appointment requests and approvals notify the patient in the web portal and by email through Brevo. Set `BREVO_API_KEY` (or the existing `BREVO_API`), `BREVO_SENDER_EMAIL`, and optionally `BREVO_SENDER_NAME` in the backend environment. The sender email must be registered and verified in Brevo, and the patient account must have an email address. Restart the backend after changing environment variables. Email delivery failures are logged and do not roll back appointments or web notifications; no automatic retry is configured.
 
+To test the current backend environment, run `npm run test:email -- recipient@example.com`. Brevo accepting the message does not guarantee inbox delivery.
+
