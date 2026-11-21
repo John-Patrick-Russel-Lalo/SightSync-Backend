@@ -12,6 +12,11 @@ import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
+// Temporarily disable public GitHub sign-in while retaining the integration.
+router.use(["/github", "/github/callback"], (_req, res) => {
+  res.status(404).json({ message: "Not found" });
+});
+
 router.get(
   "/github",
   passport.authenticate("github", {

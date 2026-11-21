@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { archiveExpiredNoShows } from "./appointmentCron.js";
+import { archiveExpiredNoShows, archiveExpiredPendingRequests } from "./appointmentCron.js";
 
 vi.mock("../config/db.js", () => ({
     default: { query: vi.fn(), connect: vi.fn() },
@@ -7,6 +7,10 @@ vi.mock("../config/db.js", () => ({
 
 vi.mock("../../modules/notification/notification.service.js", () => ({
     sendNotification: vi.fn(),
+}));
+
+vi.mock("../../modules/notification/appointmentEmail.service.js", () => ({
+    notifyPatientAppointment: vi.fn(),
 }));
 
 const NOW = "2026-09-01 10:00:00";
@@ -95,5 +99,27 @@ describe("archiveExpiredNoShows", () => {
         ]) {
             expect(sql).toMatch(new RegExp(column));
         }
+    });
+});
+
+describe("archiveExpiredPendingRequests", () => {
+    it("declines and archives pending requests once their start time has passed", async () => {
+        const expired = [{ source_appointment_id: 15, patient_id: 2, doctor_id: 1, start_time: "2026-09-01 09:30:00" }];
+        const client = mockClient(expired);
+
+        expect(await archiveExpiredPendingRequests(client, NOW)).toEqual(expired);
+
+        const [sql, params] = client.query.mock.calls[0];
+        expect(sql).toMatch(/status = 'pending'/);
+        expect(sql).toMatch(/start_time < \$1::timestamp/);
+        expect(sql).toMatch(/'declined'/);
+        expect(sql).toMatch(/decline_reason/);
+        expect(params).toEqual([NOW, "Request expired because it was not approved before the appointment time."]);
+    });
+
+    it("does not treat a request starting right now as expired", async () => {
+        const client = mockClient([]);
+        await archiveExpiredPendingRequests(client, NOW);
+        expect(client.query.mock.calls[0][0]).toMatch(/start_time < \$1::timestamp/);
     });
 });

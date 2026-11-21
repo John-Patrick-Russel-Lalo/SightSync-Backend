@@ -8,7 +8,8 @@
     "test": "vitest run",
     "test:email": "node scripts/testBrevoEmail.js",
     "import:frames": "node scripts/importBalayanFrames.js",
-    "import:inventory": "node scripts/importBalayanFrames.js"
+    "import:inventory": "node scripts/importBalayanFrames.js",
+    "import:mock-patients": "node scripts/importMockPatients.js"
   },
   "author": "",
   "license": "ISC",
