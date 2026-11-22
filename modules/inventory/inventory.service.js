@@ -653,6 +653,17 @@ export async function updateInventoryItem(id, inventoryData) {
   return result.rows[0] || null;
 }
 
+export async function updateInventoryPrices(id, { unitCost, sellingPrice }) {
+  const result = await pool.query(
+    `UPDATE inventory
+     SET unit_cost = $2, selling_price = $3, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND is_active = TRUE
+     RETURNING *`,
+    [id, unitCost, sellingPrice]
+  );
+  return result.rows[0] || null;
+}
+
 export async function updateInventoryQuantity(id, quantity) {
   const result = await pool.query(
     `
