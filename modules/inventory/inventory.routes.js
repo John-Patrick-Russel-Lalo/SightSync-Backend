@@ -21,6 +21,7 @@ import {
   handleCreateInventoryItem,
   handleUpdateInventoryItem,
   handleAdjustStock,
+  handleUpdatePrices,
   handleDeleteInventoryItem,
 } from "./inventory.controller.js";
 
@@ -51,6 +52,7 @@ router.get("/", requireAuth, requireRole("admin"), handleGetAllInventory);
 router.post("/", requireAuth, requireRole("admin"), handleCreateInventoryItem);
 
 router.patch("/:id/stock", requireAuth, requireRole("admin"), handleAdjustStock);
+router.patch("/:id/prices", requireAuth, requireRole("admin"), handleUpdatePrices);
 
 router.get("/:id", requireAuth, requireRole("admin"), handleGetInventoryById);
 router.put("/:id", requireAuth, requireRole("admin"), handleUpdateInventoryItem);

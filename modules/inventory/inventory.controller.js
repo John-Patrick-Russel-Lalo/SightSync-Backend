@@ -18,6 +18,7 @@ import {
   createInventoryItem,
   updateInventoryItem,
   updateInventoryQuantity,
+  updateInventoryPrices,
   deleteInventoryItem,
 } from "./inventory.service.js";
 
@@ -459,6 +460,23 @@ export async function handleUpdateInventoryItem(req, res) {
     }
     console.error("Error updating inventory item:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+}
+
+export async function handleUpdatePrices(req, res) {
+  const { unitCost, sellingPrice } = req.body;
+  const validPrice = (value) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+  if (!validPrice(unitCost) || !validPrice(sellingPrice)) {
+    return res.status(400).json({ error: "Unit cost and selling price must be non-negative numbers." });
+  }
+  try {
+    const item = await updateInventoryPrices(req.params.id, { unitCost, sellingPrice });
+    if (!item) return res.status(404).json({ error: "Inventory item not found." });
+    return res.json({ message: "Prices updated successfully.", data: item });
+  } catch (error) {
+    console.error("Error updating inventory prices:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 }
 

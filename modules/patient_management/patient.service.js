@@ -3,28 +3,35 @@
 export const phoneNumberValidator = async (req, res) => {
   try {
     
-    const { phoneNumber } = req.body;
+    const numberFields = [
+      ["phoneNumber", "Phone number"],
+      ["emergencyContactPhone", "Emergency contact phone number"],
+    ];
 
-    // Only validate when a phone number is actually part of the payload.
+    // Only validate numbers that are actually part of the payload.
     // Partial updates (e.g. a doctor saving an examination record) omit it.
-    if (phoneNumber === undefined || phoneNumber === null) {
-      return true;
-    }
+    for (const [field, label] of numberFields) {
+      const phoneNumber = req.body[field];
+      if (phoneNumber === undefined || phoneNumber === null) {
+        continue;
+      }
 
-    if (!phoneNumber || phoneNumber.length < 7 || phoneNumber.length > 15) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number must be at least 7 and at most 15 digits",
-      });
-    }
+      if (!phoneNumber || phoneNumber.length < 7 || phoneNumber.length > 15) {
+        return res.status(400).json({
+          success: false,
+          message: `${label} must be at least 7 and at most 15 digits`,
+        });
+      }
 
-    const validPhoneRegex = /^[0-9]{11}$/;
+      const validPhoneRegex = /^[0-9]{11}$/;
 
-    if (!validPhoneRegex.test(phoneNumber)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid phone number",
-      });
+      if (!validPhoneRegex.test(phoneNumber)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid ${label.toLowerCase()}`,
+        });
+      }
+
     }
 
     return true;
